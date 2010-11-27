@@ -1,0 +1,30 @@
+#!/bin/sh
+
+if [ ${SBBINDIR}x = "x" ]; then echo "Error:  SBBINDIR enviornment variable is not set"; exit; fi
+
+if [ ${#} -lt 5 ]; then
+  ${SBBINDIR}/SB/bin/lobmask_istl
+  exit
+fi
+erode=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.//"`; shift
+lobtrace=${1}; shift
+output=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.//"`; shift
+
+grid=""
+for arg in ${*}
+do
+  grid="${grid} ${arg}"
+done
+
+# subdivide temporal lobe into superior and inferior regions using the sylvian fissure and rpron/lpron
+${SBBINDIR}/SB/bin/lobmask_istl ${erode} ${lobtrace} ${output}_istl ${grid}
+
+# subdivide inferior temporal lobe into medial and lateral regions
+${SBBINDIR}/SB/bin/lobmask_ismltl ${output}_istl.img `echo ${grid} | sed "s/\-g *//"` ${output}_unfilled.img
+
+# fill hole in lobmask
+${SBBINDIR}/SB/bin/fill_holes_in_acpc_lobmask ${output}_unfilled.img ${output}_filled.img
+
+# remove temporary files
+rm ${output}_istl.img
+rm ${output}_istl.hdr

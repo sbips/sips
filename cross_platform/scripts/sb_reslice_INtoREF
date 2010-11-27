@@ -1,0 +1,94 @@
+#!/bin/sh
+
+
+# USAGE
+
+# Check for SBBINDIR environment variable
+if [ ${SBBINDIR}x = "x" ]
+then
+  echo "Error:  SBBINDIR enviornment variable is not set"
+  exit
+fi
+
+# Configure FSL 
+FSLDIR=${SBBINDIR}/.FSLSB
+export FSLDIR
+FSLOUTPUTTYPE=ANALYZE
+export FSLOUTPUTTYPE
+FSLBINDIR=${FSLDIR}/bin
+
+# PARSE COMMAND LINE OPTIONS
+
+in="empty"
+ref="empty"
+init="empty"
+out="empty"
+
+
+while [ ${#} -gt 0 ]
+do
+
+  case ${1} in
+  -in)
+    shift
+    in=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`
+    shift
+    ;;
+  -ref)
+    shift
+    ref=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`
+    shift
+    ;;
+  -init)
+    shift
+    init=${1}
+    shift
+    ;;
+  -out)
+    shift
+    out=${1}
+    shift
+    ;;
+  *)
+    opts="${opts} ${1}"
+    shift
+    ;;
+  esac
+
+done
+
+# ERROR CHECKING ON INPUT ARGS
+
+# check required input arguments
+
+if [ ${in} = "empty" ];
+then 
+  echo "Must specify -in"
+  exit
+fi
+
+if [ ${ref} = "empty" ];
+then 
+  echo "Must specify -ref"
+  exit
+fi
+
+if [ ${init} = "empty" ];
+then 
+  echo "Must specify -init"
+  exit
+fi
+if [ ${out} = "empty" ];
+then 
+  echo "Must specify -out"
+  exit
+fi
+
+
+
+# COREGISTRATION
+
+# user supplied ${opts} are supplied last and will override options specified in this script
+${FSLBINDIR}/flirt -in ${in} -ref ${ref} -init ${init} -out ${out} -applyxfm -nosearch ${opts}
+
+

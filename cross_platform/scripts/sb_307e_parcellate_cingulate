@@ -1,0 +1,95 @@
+#!/bin/sh
+
+##########################################
+# Set environment variables
+##########################################
+
+# e.g. SBBINDIR=/opt/sb/egibson/linux or /windows or /unix
+# SBBINDIR must contain /SB and /.FSLSB and /.HFB
+if [ ${SBBINDIR}x = "x" ]; then echo "Error:  SBBINDIR enviornment variable is not set"; exit; fi
+
+##########################################
+# Define functions
+##########################################
+
+usage(){
+  cmdname=`basename ${0}`
+  echo "Usage:"
+  echo "  ${cmdname} -t1acpc <ACPC_T1> -mat <ACPC_to_T1.mat> "
+  echo "             -obj <tracing.obj> -grid <grid.txt> -out <cingulate>"
+  echo ""
+  echo " -t1acpc: (ACPC T1 image, required)"
+  echo " -mat:    (ACPC-to-T1 rotation matrix, required)"
+  echo " -grid:   (lobmask grid text file)"
+  echo " -out:    (output prefix, required)"
+  echo " -obj:    (cingulate tracing object map, required)"
+  echo " -t1acq:  (T1 image in aquisition space, not usually required)"
+  echo ""
+  echo "Purpose:"
+  echo " -parcellate the cingulate into 6 regions"
+  echo ""
+  exit
+}
+
+parse_arguments(){
+  while [ ${#} -gt 0 ]
+  do
+    case ${1} in
+    -t1acpc)
+      shift; t1acpc=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -out)
+      shift; out=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -obj)
+      shift; obj=`echo ${1}`; shift;;
+     -mat)
+      shift; mat=`echo ${1}`; shift;;
+     -grid)
+      shift; grid=`echo ${1}`; shift;;
+    -help)
+      usage;;
+    *)
+      echo "Error: unknown option ${1}"; exit;;
+    esac
+  done
+}
+
+check_analyze(){
+  if [ ! -f ${1}.img ]; then echo "Error:  ${1}.img not found"; exit; fi
+  if [ ! -f ${1}.hdr ]; then echo "Error:  ${1}.hdr not found"; exit; fi
+  if [ ${2}x != "x" ];  then echo "Error: Multiple files detected: ${*}"; exit; fi
+}
+
+check_file(){
+  if [ ${1}x = "x" ]; then echo "Error: file not found"; exit; fi
+  if [ ! -f ${1} ];   then echo "Error: ${1} not found"; exit; fi
+  if [ ${2}x != "x" ]; then echo "Error: multiple files detected: ${*}"; exit; fi
+}
+
+##########################################
+# Verify Input
+##########################################
+if [ ${#} -lt 5 ]; then usage; fi
+
+parse_arguments ${*}
+
+if [ ${t1acpc}x = "x" ];    then echo "Error:  Must supply -t1 option"; exit; fi;
+if [ ${out}x = "x" ];   then echo "Error:  Must supply -out option"; exit; fi;
+if [ ${obj}x = "x" ];  then echo "Error:  Must supply -obj option"; exit; fi;
+if [ ${mat}x = "x" ];  then echo "Error:  Must supply -mat option"; exit; fi;
+if [ ${grid}x = "x" ];  then echo "Error: Must supply -grid option"; exit; fi;
+if [ ${t1acq}x = "x" ]; then t1acq=`ls *T1acq_lobmask_filled.img | sed "s/\.img//" 2>/dev/null`; fi
+if [ ${t1acq}x = "x" ]; then echo "Error: could not guess T1 acquisition image, use -t1acq option"; exit; fi
+
+check_analyze ${t1acpc};  check_file ${obj};  check_file ${mat}; check_file ${grid}; check_analyze ${t1acq}
+
+##########################################
+# Start processing
+##########################################
+
+${SBBINDIR}/SB/bin/obj2img ${obj} ${t1acpc}.img temp_cingulate_tracing.img
+
+${SBBINDIR}/SB/bin/lobmask_cingulate temp_cingulate_tracing ${out}_acpc -g ${grid}
+
+rm temp_cingulate_tracing.*
+
+${SBBINDIR}/SB/bin/areslice ${out}_acpc.img ${t1acq}.img ${mat} ${out}.img -nn

@@ -1,0 +1,174 @@
+#!/bin/sh
+
+#=========================================================================
+  
+#  Copyright 2002, 2006-2010, Dr. Sandra Black
+#  Linda C. Campbell Cognitive Neurology Unit
+#  Sunnybrook Health Sciences Center
+  
+#  This file is part of the Sunnybrook Image Software Processing (SIPS) package
+
+#  SIPS is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+ 
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+#=========================================================================*/
+
+
+##########################################
+# Written 02/23/08 by eg
+##########################################
+
+##########################################
+# Set environment variables
+##########################################
+
+# e.g. SBBINDIR=/opt/sb/egibson/linux or /windows or /unix
+# SBBINDIR must contain /SB and /.FSLSB and /.HFB
+if [ ${SBBINDIR}x = "x" ]; then echo "Error:  SBBINDIR enviornment variable is not set"; exit; fi
+
+# Configure FSL 
+# .FSLSB contains SABRE essential FSL commands
+#  SB contains the wrapper scripts for these FSL commands
+# (this was done so that SABRE would run correctly no matter which version of FSL the user has installed)
+
+FSLDIR=${SBBINDIR}/.FSLSB
+export FSLDIR
+FSLOUTPUTTYPE=ANALYZE
+export FSLOUTPUTTYPE
+FSLBINDIR=${FSLDIR}/bin
+
+##########################################
+# Define functions
+##########################################
+
+usage(){
+  cmdname=`basename ${0}`
+  echo "Usage:"
+  echo "  ${cmdname} -t1acq <T1_image> -hfb <HFB_image> [options]"
+  echo ""
+  echo "Examples:"
+  echo "  ${cmdname} -t1acq 452_T1 -hfb 452_HfBd "
+  echo ""
+  echo "Options:"
+  echo "  -t1acq <vol>:(uncorrected, skull-on T1 image, required)"
+  echo "  -hfb <vol>:  (edited head-from-brain image, required)"
+  echo "  -t1fc <vol>: (isotropic T1 image, req'd, unless filename ends with _T1_fc)"
+  echo "  -mat <mat>:  (ACPC rotation matrix, req'd unless filename ends with .mat)" 
+  echo "  -pfx <pfx>:  (output prefix, req'd unless T1 ends with _T1 or t1)"
+  echo ""
+  echo "Purpose:"
+  echo "  -${cmdname} will mask T1 image and segment, and also create"
+  echo "   ACPC-aligned images (acpc_T1 and acpc_T1_erode) for SABRE landmarking"
+  echo ""
+  echo "Notes"
+  echo "  -required input: 8 bit T1 and 8/16 bit HfB"
+  echo "   (use 304_segment_and_acpc for 16 bit T1 data)"
+  echo "  -HfB must have 0s for non-brain and either 1s or 8s for brain"
+  echo ""
+  exit
+}
+
+parse_arguments(){
+  while [ ${#} -gt 0 ]
+  do
+    case ${1} in
+    -t1acq)
+      shift; t1acq=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -t1fc)
+      shift; t1fc=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -hfb)
+      shift; hfb=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -mat)
+      shift; mat=${1}; shift;;
+    -pfx)
+      shift; pfx=${1}; shift;;
+    -help)
+      usage;;
+    *)
+      echo "Error: unknown option ${1}"; exit;;
+    esac
+  done
+}
+
+check_analyze(){
+  if [ ! -f ${1}.img ]; then echo "Error:  ${1}.img not found"; exit; fi
+  if [ ! -f ${1}.hdr ]; then echo "Error:  ${1}.hdr not found"; exit; fi
+  if [ ${2}x != "x" ];  then echo "Error: Multiple files detected: ${*}"; exit; fi
+}
+
+check_file(){
+  if [ ${1}x = "x" ]; then echo "Error: file not found"; exit; fi
+  if [ ! -f ${1} ];   then echo "Error: ${1} not found"; exit; fi
+  if [ ${2}x != "x" ]; then echo "Error: multiple files detected: ${*}"; exit; fi
+}
+
+##########################################
+# Verify Input
+##########################################
+
+if [ ${#} -lt 4 ]; then usage; fi
+
+parse_arguments ${*}
+
+if [ ${t1acq}x  = "x" ]; then echo "Error: must supply a T1 image";  fi
+if [ ${hfb}x = "x" ]; then echo "Error: must supply a HfB image"; fi
+if [ ${t1fc}x = "x" ]; then t1fc=${t1acq}_fc; fi
+if [ ${mat}x  = "x" ]; then mat=`ls *.mat 2>/dev/null`; fi;
+if [ ${pfx}x = "x" ]; then pfx=`echo ${t1acq} | sed "s/_T1//" | sed "s/_t1//"`; fi
+if [ ${pfx} = ${t1acq} ]; then echo "Error: can't guess prefix, use -pfx option"; fi
+
+check_analyze ${t1acq}; check_analyze ${hfb}; check_analyze ${t1fc};
+
+echo "Checking for ACPC rotation matrix"; check_file ${mat}; echo "Found ${mat}";
+echo ${pfx}
+
+##########################################
+# Start processing
+##########################################
+
+#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!AIR!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
+# transform
+echo "Running transform..."
+${SBBINDIR}/SB/bin/atransform ${t1fc}.img ${t1acq}.img ${mat} ${pfx}
+
+#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!AIR!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
+
+# mask t1acq
+echo "Running mask_img..."
+# (-m 0 2 3 4 5 6 7 options ensures that command will work with binary
+#  auto_hfb_template output or recoded auto_hfb output where brain = 8)
+${SBBINDIR}/SB/bin/mask_img ${t1acq} ${hfb} -m 0 2 3 4 5 6 7 
+
+# segment T1
+echo "Segmenting T1"
+${SBBINDIR}/SB/bin/T1seg ${t1acq}_masked ${pfx}_T1_seg -bfgw 0 5 4 3 
+
+
+#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!AIR!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
+# reslice corrected T1 in ACPC space
+echo "Reslicing T1 in ACPC space"
+${SBBINDIR}/SB/bin/areslice ${t1acq}.img ${t1fc}.img ${pfx}_T1_to_acpc.mat ${pfx}_acpc_T1.img -zpad 30
+#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!AIR!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
+
+
+# erode corrected masked T1
+echo "Eroding T1"
+${SBBINDIR}/SB/bin/erode ${t1acq}_masked ${pfx}_T1_seg ${pfx}_T1acq_erode
+
+
+#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!AIR!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
+# reslice T1 erode in ACPC
+${SBBINDIR}/SB/bin/areslice ${pfx}_T1acq_erode.img ${t1fc}.img  ${pfx}_T1_to_acpc.mat ${pfx}_acpc_T1_erode.img -zpad 30
+#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!AIR!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
+
+

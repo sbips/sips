@@ -1,0 +1,1 @@
+~/sunOS5.8/gcc-2.95.2-bin/bin/g++ -O2 3T_T1seg_v4.cpp -o T1seg_3T

@@ -1,0 +1,100 @@
+#!/bin/sh
+##########################################
+# Written 02/23/08 by eg
+##########################################
+
+##########################################
+# Set environment variables
+##########################################
+
+# e.g. SBBINDIR=/opt/sb/egibson/linux or /windows or /unix
+# SBBINDIR must contain /SB and /.FSLSB and /.HFB
+if [ ${SBBINDIR}x = "x" ]; then echo "Error:  SBBINDIR enviornment variable is not set"; exit; fi
+
+# Configure FSL 
+# .FSLSB contains SABRE essential FSL commands
+#  SB contains the wrapper scripts for these FSL commands
+# (this was done so that SABRE would run correctly no matter which version of FSL the user has installed)
+
+FSLDIR=${SBBINDIR}/.FSLSB
+export FSLDIR
+FSLOUTPUTTYPE=ANALYZE
+export FSLOUTPUTTYPE
+
+
+##########################################
+# Define functions
+##########################################
+
+usage(){
+  cmdname=`basename ${0}`
+  echo "Usage:"
+  echo "  ${cmdname} -fl <FLAIR_image> -hfb <HFB_image>"
+  echo ""
+  echo "Options:"
+  echo "  -fl  <vol>:  (uncorrected, skull-on FLAIR image, required)"
+  echo "  -hfb <vol>:  (good head-from-brain mask image, required)"
+  echo ""
+  echo "Purpose:"
+  echo "  -${cmdname} mask and bias-correct the FLAIR (i.e. preprare FLAIR for sb_flex)"
+  echo ""
+  echo "Notes:"
+  echo "  -FLAIR & HFB can be in native or T1 space but must be coregistered"
+  echo "  -HFB mask should have 0s for background, and either 1s or 8s for brain"
+  echo "  -masked, bias-corrected FLAIR will be named with a \"_mc\" appended to the"
+  echo "   filename of the FLAIR"
+  echo ""
+  exit;
+}
+
+
+parse_arguments(){
+  while [ ${#} -gt 0 ]
+  do
+    case ${1} in
+    -fl)
+      shift; fl=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -hfb)
+      shift; hfb=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -help)
+      usage;;
+    *)
+      echo "Error: unknown option ${1}"; exit;;
+    esac
+  done
+}
+
+check_analyze(){
+  if [ ! -f ${1}.img ]; then echo "Error:  ${1}.img not found"; exit; fi
+  if [ ! -f ${1}.hdr ]; then echo "Error:  ${1}.hdr not found"; exit; fi
+  if [ ${2}x != "x" ];  then echo "Error: Multiple files detected: ${*}"; exit; fi
+}
+
+##########################################
+# Verify Input
+##########################################
+
+if [ ${#} -lt 4 ]; then usage; fi
+
+# get command line input
+
+parse_arguments ${*}
+
+if [ ${hfb}x = "x" ];  then echo "Error: must supply a HFB image";   exit; fi
+
+# check that files exist
+check_analyze ${fl}; check_analyze ${hfb}
+
+
+##########################################
+# Start processing
+##########################################
+
+# mask flair and t2 images
+${SBBINDIR}/SB/bin/mask_img ${fl} ${hfb} -m 0 2 3 4 5 6 7 
+
+# inhomogeneity correction with N3
+sb_nu_correct_analyze16SI ${fl}_masked.img ${fl}_masked.img ${fl}_mc.img -iterations 150 -stop 0.0001 -distance 55
+
+# remove temporary images
+rm ${fl}_masked.*; 

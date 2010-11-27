@@ -1,0 +1,99 @@
+#!/bin/sh
+
+
+# USAGE
+
+# Check for SBBINDIR environment variable
+if [ ${SBBINDIR}x = "x" ]
+then
+  echo "Error:  SBBINDIR enviornment variable is not set"
+  exit
+fi
+
+# Configure FSL 
+FSLDIR=${SBBINDIR}/.FSLSB
+export FSLDIR
+FSLOUTPUTTYPE=ANALYZE
+export FSLOUTPUTTYPE
+FSLBINDIR=${FSLDIR}/bin
+
+
+# PARSE COMMAND LINE OPTIONS
+
+in="empty"
+ref="empty"
+omat="empty"
+
+opts=""
+
+
+while [ ${#} -gt 0 ]
+do
+
+  case ${1} in
+  -in)
+    shift
+    in=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`
+    shift
+    ;;
+  -ref)
+    shift
+    ref=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`
+    shift
+    ;;
+  -omat)
+    shift
+    omat=${1}
+    shift
+    ;;
+  *)
+    opts="${opts} ${1}"
+    shift
+    ;;
+  esac
+
+done
+
+# ERROR CHECKING ON INPUT ARGS
+
+# check required input arguments
+if [ ${in} = "empty" ];
+then 
+  echo "Must specify -in"
+  exit
+fi
+
+if [ ${ref} = "empty" ];
+then 
+  echo "Must specify -ref"
+  exit
+fi
+
+if [ ${omat} = "empty" ];
+then 
+  echo "Must specify -omat"
+  exit
+fi
+
+# check that extension was given for omat matrix
+#   (req'd for autonaming the inverse omat matrix)
+ext=`echo ${omat} | awk -F . '{print $NF}'`
+ext="empty"${ext}
+if [ ${ext} = "empty" ]
+then
+  echo "Must supply extension for -omat"
+  exit
+fi
+
+
+
+# COREGISTRATION
+
+# user supplied ${opts} are supplied last and will override options specified in this script
+
+sb_flirt -in ${in} -ref ${ref} -omat ${omat} -cost normmi -searchcost normmi -dof 6 ${opts}
+
+
+# CREATE INVERSE MATRIX
+inverse=`echo ${omat} | sed "s/\./_inverse\./"`
+${FSLBINDIR}/convert_xfm -omat ${inverse} -inverse ${omat}

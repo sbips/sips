@@ -1,0 +1,232 @@
+#!/bin/sh
+
+#=========================================================================
+  
+#  Copyright 2002, 2006-2010, Dr. Sandra Black
+#  Linda C. Campbell Cognitive Neurology Unit
+#  Sunnybrook Health Sciences Center
+  
+#  This file is part of the Sunnybrook Image Software Processing (SIPS) package
+
+#  SIPS is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+ 
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+#=========================================================================*/
+
+
+##########################################
+# Written 08/05/2009 by eg
+##########################################
+
+##########################################
+# Set environment variables
+##########################################
+
+# e.g. SBBINDIR=/opt/sb/egibson/linux or /windows or /unix
+# SBBINDIR must contain /SB and /.FSLSB and /HFB
+if [ ${SBBINDIR}x = "x" ]; then echo "Error:  SBBINDIR enviornment variable is not set"; exit; fi
+
+
+##########################################
+# Define functions
+##########################################
+
+usage(){
+  cmdname=`basename ${0}`
+  echo "Usage:"
+  echo "  ${cmdname} -t2 <T2_image> -pd <PD_image> -mask <MASK_image> [options]"
+  echo ""
+  echo "  -t2   <vol>:  (skull-on T2 image, typically in T1 space, required)"
+  echo "  -pd   <vol>:  (skull-on PD image, typically in T1 space, required)"
+  echo "  -mask <vol>:  (masked T1, T2, or PD image, required)"
+  echo "  -pfx  <pfx>:  (output prefix, req'd unless T2 ends with _T2.img or _t2.img)"
+  echo "  -pdt <float>: (template head-from-brain threshold for PD, default (3T) = 0.47)"
+  echo "  -t2t <float>: (template head-from-brain threshold for T2, default (3T) = 0.27)"
+  echo "  -cut <int>:   (template head-from-brain cutof, default = 50)"  
+  echo "  -t   <float>: (auto head-from-brain threshold, default (1.5T/3T) = 0.40)"
+  echo "  -t2reg:       (use if mask image is a T2 image, default = -t1reg)"
+  echo "  -pdreg:       (use if mask image is a PD image, default = -t1reg)"
+  echo "  -noic:        (do not perform intensity inhomogeneity corrections)"
+  echo "  -fslinstalled (use user installed version of FSL)"
+  echo "  -hfbt         (perform only template head-from-brain)"
+  echo "  -hfba         (perform only original head-from-brain)"
+  echo ""
+  echo "Purpose:"
+  echo "  -${cmdname} creates 3 head-from-brain images: the new template"
+  echo "   HfBt image (requires minimal manual edits, the old auto HfBa image (requires"
+  echo "   extensive manual edits), and the combined HfBc image (a combination of"
+  echo "   the new and old HfBs, may be best option for editing)"
+  echo ""
+  echo "Notes:"
+  echo "  -bet can be used to generate the mask image, typically best results are"
+  echo "   obtained using the N3 corrected T2 as input to bet"
+  echo "  -The mask is to used only to generate the template HfB image and does not"
+  echo "   need to be perfect but should be reasonable"
+  echo "  -If the T2 and PD input images have been bias corrected (e.g. 3T data"
+  echo "   processed through sb_301_coregister), use the -noic option"
+  echo ""
+  exit;
+}
+
+
+parse_arguments(){
+  hfbt="true"
+  hfba="true"
+  template_img="${SBBINDIR}/HFB/template_T1m"
+  while [ ${#} -gt 0 ]
+  do
+    case ${1} in
+    -t2)
+      shift; t2=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -pd)
+      shift; pd=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -mask)
+      shift; mask=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -t2t)
+      shift; t2t=${1}; shift;;
+    -pdt)
+      shift; pdt=${1}; shift;;
+     -cut)
+      shift; cutv=${1}; shift;;     
+    -t)
+      shift; t=${1}; shift;;
+    -t2reg)
+      shift; 
+      template_img="${SBBINDIR}/HFB/template_T2m";;
+    -pdreg)
+      shift; 
+      template_img="${SBBINDIR}/HFB/template_Pm";;
+    -t1reg)
+      shift;; # ignore, auto_hfb_template already assumes -t1reg
+    -pfx)
+      shift; pfx=${1}; shift;;
+    -noic)
+       shift; noic="true";;    
+    -fslinstalled)
+       shift; fslinstalled="true";;
+    -hfbt)
+      shift; hfba="false";;
+    -hfba)
+      shift; hfbt="false";;
+    -help)
+      usage;;
+    *)
+      echo "Error: unknown option ${1}"; exit;;
+    esac
+
+    if [ ! -f ${template_img}.img ]; then echo "Error opening ${template_img}... Exiting."; exit; fi
+    
+  done
+}
+
+check_analyze(){
+  if [ ! -f ${1}.img ]; then echo "Error:  ${1}.img not found"; exit; fi
+  if [ ! -f ${1}.hdr ]; then echo "Error:  ${1}.hdr not found"; exit; fi
+  if [ ${2}x != "x" ];  then echo "Error: Multiple files detected: ${*}"; exit; fi
+}
+
+##########################################
+# Verify Input
+##########################################
+
+if [ ${#} -lt 2 ]; then usage; fi
+
+# get command line input
+parse_arguments ${*}
+
+if [ ${t2}x = "x" ];   then echo "Error: must supply a T2 image";   exit; fi
+if [ ${pd}x = "x" ];   then echo "Error: must supply a PD image";   exit; fi
+if [ ${mask}x = "x" ]; then echo "Error: must supply a MASKED image"; exit; fi
+
+# check that files exist
+check_analyze ${t2}; check_analyze ${pd}; check_analyze ${mask}
+
+if [ ${pdt}x = "x" ]; then pdt=0.47; fi;
+if [ ${t2t}x = "x" ]; then t2t=0.27; fi;
+if [ ${t}x   = "x" ]; then t=0.40; fi;
+if [ ${cutv}x   = "x" ]; then cutv=50; fi;
+
+if [ ${pfx}x = "x" ];  then pfx=`echo ${t2} | sed "s/_T2$//" | sed "s/_t2$//"`; fi; 
+if [ ${pfx} = ${t2} ]; then echo "Error: can't guess prefix, use -pfx option"; exit; fi
+
+##########################################
+# Start processing
+##########################################
+
+if [ ${fslinstalled}x = "x" ]; then
+  # Configure FSL 
+  # .FSLSB contains SABRE essential FSL commands
+  #  SB contains the wrapper scripts for these FSL commands
+  # (this was done so that SABRE would run correctly no matter which version of FSL the user has installed)
+
+  FSLDIR=${SBBINDIR}/.FSLSB
+  export FSLDIR
+  FSLOUTPUTTYPE=ANALYZE
+  export FSLOUTPUTTYPE
+fi
+
+
+if [ ${noic}x = "x" ]; then
+
+  echo "Performing head-from-brain with intensity inhomogeneity corrections"
+  sb_nu_correct_analyze16SI ${t2}.hdr ${mask}.hdr temp_nu_t2.hdr -iterations 150 -stop 0.0001 -distance 55
+  sb_nu_correct_analyze16SI ${pd}.hdr ${mask}.hdr temp_nu_pd.hdr -iterations 150 -stop 0.0001 -distance 55
+  t2in="temp_nu_t2"
+  pdin="temp_nu_pd"
+  
+else
+
+  echo "Performing head-from-brain without intensity inhomgoeneity corrections"
+  t2in=${t2}
+  pdin=${pd}
+
+fi
+
+
+# new HFBt
+if [ ${hfbt} = "true" ]; then
+  # new auto_hfb_template (requires fewer manual edits)
+  echo "Performing auto_hfb_template"
+  echo "Registering masked image to template HfB"
+  echo "Template image:  ${template_img}"
+  ${FSLDIR}/bin/flirt -in ${mask} -ref ${template_img} -omat ${pfx}_subject_to_template.omat -searchcost normmi -cost normmi 
+  ${FSLDIR}/bin/convert_xfm -omat ${pfx}_template_to_subject.omat -inverse ${pfx}_subject_to_template.omat
+  echo "Reslicing template HfB in subject's space"
+  ${FSLDIR}/bin/flirt -in ${SBBINDIR}/HFB/template_hfb -ref ${mask} -init ${pfx}_template_to_subject.omat -applyxfm -nosearch -out ${pfx}_template_to_sub -interp nearestneighbour -datatype char
+  echo "Generating template HfB"
+  ${SBBINDIR}/HFB/auto_hfb_template -t2 ${t2in}.img -pd ${pdin}.img -avg ${pfx}_template_to_sub.img -npdt ${pdt} -nt2t ${t2t} -cutv ${cut} -out ${pfx}_HfBt.img
+fi
+
+# old HFBa
+if [ ${hfba} = "true" ]; then
+  # old auto_hfb (requires extensive manual edits)
+  echo "Performing auto_hfb"
+  cp ${t2in}.img .temp_T2.img; cp ${t2in}.hdr .temp_T2.hdr;
+  cp ${pdin}.img .temp_P.img;  cp ${pdin}.hdr .temp_P.hdr; 
+  ${SBBINDIR}/SB/bin/auto_hfb .temp -c ${t}
+  mv .temp_HfB.img ${pfx}_HfBa.img; 
+  mv .temp_HfB.hdr ${pfx}_HfBa.hdr;
+  rm .temp_*
+fi
+
+# combine new HFBt and old HFBa
+if [ ${hfba} = "true" ] && [ ${hfbt} = "true" ]; then 
+  # combine new and old hfbs 
+  ${SBBINDIR}/SB/bin/combine_hfbs ${pfx}_HfBa.img ${pfx}_HfBt.img ${pfx}_HfBc.img 
+fi
+
+# remove IC files, if created
+if [ ${noic}x = "x" ]; then
+  rm temp_nu_t2.*
+  rm temp_nu_pd.*
+fi

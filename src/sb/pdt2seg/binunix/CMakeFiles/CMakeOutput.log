@@ -1,0 +1,47 @@
+The system is: SunOS - 5.8 - sparc
+Determining if the C compiler is GNU succeeded with the following output:
+# 1 "/home116/egibson/sunOS5.8/cmake-2.4.8-build/share/cmake-2.4/Modules/CMakeTestGNU.c"
+# 1 "<built-in>"
+# 1 "<command-line>"
+# 1 "/home116/egibson/sunOS5.8/cmake-2.4.8-build/share/cmake-2.4/Modules/CMakeTestGNU.c"
+
+void THIS_IS_GNU();
+
+Determining if the C++ compiler is GNU succeeded with the following output:
+# 1 "/home116/egibson/sunOS5.8/cmake-2.4.8-build/share/cmake-2.4/Modules/CMakeTestGNU.c"
+# 1 "<built-in>"
+# 1 "<command-line>"
+# 1 "/home116/egibson/sunOS5.8/cmake-2.4.8-build/share/cmake-2.4/Modules/CMakeTestGNU.c"
+
+void THIS_IS_GNU();
+
+Determining if the C compiler works passed with the following output:
+/usr/ccs/bin/make -f CMakeFiles/cmTryCompileExec.dir/build.make CMakeFiles/cmTryCompileExec.dir/build
+/home116/egibson/sunOS5.8/cmake-2.4.8-build/bin/cmake -E cmake_progress_report /net/synapse/nt/egibson/data/le2/c++/binunix/CMakeFiles/CMakeTmp/CMakeFiles 1
+Building C object CMakeFiles/cmTryCompileExec.dir/testCCompiler.o
+/home116/egibson/sunOS5.8/gcc-4.3.2-build/bin/gcc   -o CMakeFiles/cmTryCompileExec.dir/testCCompiler.o   -c /net/synapse/nt/egibson/data/le2/c++/binunix/CMakeFiles/CMakeTmp/testCCompiler.c
+Linking C executable cmTryCompileExec
+/home116/egibson/sunOS5.8/cmake-2.4.8-build/bin/cmake -P CMakeFiles/cmTryCompileExec.dir/cmake_clean_target.cmake
+/home116/egibson/sunOS5.8/gcc-4.3.2-build/bin/gcc        -fPIC "CMakeFiles/cmTryCompileExec.dir/testCCompiler.o"   -o cmTryCompileExec  
+
+
+Determining size of void* passed with the following output:
+/usr/ccs/bin/make -f CMakeFiles/cmTryCompileExec.dir/build.make CMakeFiles/cmTryCompileExec.dir/build
+/home116/egibson/sunOS5.8/cmake-2.4.8-build/bin/cmake -E cmake_progress_report /net/synapse/nt/egibson/data/le2/c++/binunix/CMakeFiles/CMakeTmp/CMakeFiles 1
+Building C object CMakeFiles/cmTryCompileExec.dir/CheckTypeSize.o
+/home116/egibson/sunOS5.8/gcc-4.3.2-build/bin/gcc   -o CMakeFiles/cmTryCompileExec.dir/CheckTypeSize.o   -c /net/synapse/nt/egibson/data/le2/c++/binunix/CMakeFiles/CMakeTmp/CheckTypeSize.c
+Linking C executable cmTryCompileExec
+/home116/egibson/sunOS5.8/cmake-2.4.8-build/bin/cmake -P CMakeFiles/cmTryCompileExec.dir/cmake_clean_target.cmake
+/home116/egibson/sunOS5.8/gcc-4.3.2-build/bin/gcc        -fPIC "CMakeFiles/cmTryCompileExec.dir/CheckTypeSize.o"   -o cmTryCompileExec  
+
+
+Determining if the CXX compiler works passed with the following output:
+/usr/ccs/bin/make -f CMakeFiles/cmTryCompileExec.dir/build.make CMakeFiles/cmTryCompileExec.dir/build
+/home116/egibson/sunOS5.8/cmake-2.4.8-build/bin/cmake -E cmake_progress_report /net/synapse/nt/egibson/data/le2/c++/binunix/CMakeFiles/CMakeTmp/CMakeFiles 1
+Building CXX object CMakeFiles/cmTryCompileExec.dir/testCXXCompiler.o
+/home116/egibson/sunOS5.8/gcc-4.3.2-build/bin/g++    -o CMakeFiles/cmTryCompileExec.dir/testCXXCompiler.o -c /net/synapse/nt/egibson/data/le2/c++/binunix/CMakeFiles/CMakeTmp/testCXXCompiler.cxx
+Linking CXX executable cmTryCompileExec
+/home116/egibson/sunOS5.8/cmake-2.4.8-build/bin/cmake -P CMakeFiles/cmTryCompileExec.dir/cmake_clean_target.cmake
+/home116/egibson/sunOS5.8/gcc-4.3.2-build/bin/g++         -fPIC "CMakeFiles/cmTryCompileExec.dir/testCXXCompiler.o"   -o cmTryCompileExec  
+
+

@@ -1,0 +1,68 @@
+#!/bin/sh
+
+##########################################
+# Set environment variables
+##########################################
+
+# e.g. SBBINDIR=/opt/sb/egibson/linux or /windows or /unix
+# SBBINDIR must contain /SB and /.FSLSB and /.HFB
+if [ ${SBBINDIR}x = "x" ]; then echo "Error:  SBBINDIR enviornment variable is not set"; exit; fi
+
+##########################################
+# Define functions
+##########################################
+
+parse_arguments(){
+  while [ ${#} -gt 0 ]
+  do
+    case ${1} in
+    -grid)
+      shift; grid=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`; shift;;
+    -acpc)
+      shift; acpc=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`; shift;;      
+    -pfx)
+      shift; pfx=`echo ${1}`; shift;;            
+    -air)
+      shift; air=`echo ${1}`; shift;;                
+    -lob)
+      shift; lob=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`; shift;;              
+    -seg)
+      shift; seg=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`; shift;;               
+    *)
+      echo "Error: unknown option ${1}"; exit;;
+    esac
+  done
+}
+
+##########################################
+# Start Processing
+##########################################
+
+if [ ${#} -lt 12 ]; then
+  cmd=`basename ${0}`
+  echo ""
+  echo "Usage:"
+  echo "${cmd} -seg  <X_T1_seg_vcsf_woc>"
+  echo "       -lob  <X_T1acq_lobmask>"
+  echo "       -air  <X_ACPC_to_T1acq.air>"
+  echo "       -acpc <X_acpc_T1>"
+  echo "       -grid <X_grid.txt>"
+  echo "       -pfx  <X>"
+  echo ""
+  exit
+fi
+
+parse_arguments ${*}
+
+${SBBINDIR}/SB/bin/imgmath ${acpc}.img -bin .sb_mtl_temp_acpc.img -char
+${SBBINDIR}/SB/bin/mtlmask ${grid} .sb_mtl_temp_acpc ${pfx}_acpc_MTLmask > ${pfx}_MTL_grid.txt
+rm .sb_mtl_temp_acpc.*
+
+
+${SBBINDIR}/SB/bin/reslice ${air} ${pfx}_T1acq_MTLmask -o -k -n 0 -a ${pfx}_acpc_MTLmask #>> ${pfx}-mtl.txt
+${SBBINDIR}/SB/bin/applyMTL ${lob} ${pfx}_T1acq_MTLmask ${seg} ${pfx}_T1acq_lobmask_noMTL > ${pfx}_counts_MTL.txt
+
+${SBBINDIR}/SB/bin/stats2 ${pfx}_T1acq_lobmask_noMTL ${seg} > ${pfx}_counts_noMTL.txt
+
+
+ 

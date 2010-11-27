@@ -1,0 +1,248 @@
+#!/bin/sh
+##########################################
+# Written 02/23/08 by eg
+##########################################
+
+##########################################
+# Set environment variables
+##########################################
+
+# e.g. SBBINDIR=/opt/sb/egibson/linux or /windows or /unix
+# SBBINDIR must contain /SB and /.FSLSB and /.HFB
+if [ ${SBBINDIR}x = "x" ]; then echo "Error:  SBBINDIR enviornment variable is not set"; exit; fi
+
+##########################################
+# Define functions
+##########################################
+
+usage(){
+  cmdname=`basename ${0}`
+  echo "Usage:"
+  echo "  ${cmdname} -t1 <T1_image> [options]"
+  echo ""
+  echo "  -t1 <vol>:     (uncorrected, skull-on, T1 image, required)"
+  echo "  -t2 <vol>:     (uncorrected, skull-on, T2 image, optional)"
+  echo "  -pd <vol>:     (uncorrected, skull-on, PD image, optional)"
+  echo "  -fl <vol>:     (uncorrected, skull-on, FL image, optional)"
+  echo "  -pfx <pfx>:    (output prefix, req'd unless T1 ends with _T1.img or _t1.img)"
+  echo "  -t1t <float>:  (bet -f threshold for T1, default = 0.2)"
+  echo "  -t2t <float>:  (bet -f threshold for T2, default = 0.2)"
+  echo "  -pdt <float>:  (bet -f threshold for PD, default = 0.2)"
+  echo "  -flt <float>:  (bet -f threshold for FL, default = 0.2)"
+  echo "  -noic:         (do not perform inhomogeneity corrections)"
+  echo "  -fixreg:       (reslices images again)"
+  echo "  -fslinstalled: (use user installed version of FSL)"
+  echo ""
+  echo "Purpose:"
+  echo "  -${cmdname} uses FSL's bet and (optionally) John Sled's N3 to correct"
+  echo "   intensity inhomogeneities in the input images and then uses FSL's flirt to"
+  echo "   coregister and reslice the input images in T1 space with 6 dof, a"
+  echo "   normalized mutual information cost function, and sinc interpolation."
+  echo ""
+  echo "Notes:"
+  echo "  -Required input: T1 and PD/T2 and/or FLAIR images."
+  echo "  -If the intensity range in the images is markedly different than usual, the"
+  echo "   bet threshold may need to be adjusted using the -t1t/-t2t/-pdt/-flt options"
+  echo "  -Use the -noic option if intensity inhomogeneities are absent (e.g. 3T data)."
+  echo "  -If no inhomogeneity corrections are performed (i.e. if the -noic option is"
+  echo "   used), then the -t1t/-t2t/-pdt/-flt options determine the bet threshold used"
+  echo "   to coregister images.  If inhomogeneity corrections are performed, then"
+  echo "   the -t1t/-t2t/-pdt/-flt options determine the bet threshold used to bias"
+  echo "   correct the images with N3, and after bias-correction, the initial bet"
+  echo "   thresholds are increased by 1.0 and used to coregister the images."
+  echo ""
+  exit;
+}
+
+
+parse_arguments(){
+  while [ ${#} -gt 0 ]
+  do
+    case ${1} in
+    -fl)
+      shift; fl=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -t1)
+      shift; t1=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -t2)
+      shift; t2=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -pd)
+      shift; pd=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -flt)
+      shift; flt=${1}; shift;;
+    -t1t)
+      shift; t1t=${1}; shift;;
+    -t2t)
+      shift; t2t=${1}; shift;;
+    -pdt)
+      shift; pdt=${1}; shift;;
+    -pfx)
+      shift; pfx=${1}; shift;;
+    -fixreg)
+      shift; fixreg="true";;
+    -noic)
+       shift; noic="true";;
+    -fslinstalled)
+      shift; fslinstalled="true";;
+    -help)
+      usage;;
+    *)
+      echo "Error: unknown option ${1}"; exit;;
+    esac
+  done
+}
+
+check_analyze(){
+  if [ ! -f ${1}.img ]; then echo "Error:  ${1}.img not found"; exit; fi
+  if [ ! -f ${1}.hdr ]; then echo "Error:  ${1}.hdr not found"; exit; fi
+  if [ ${2}x != "x" ];  then echo "Error: Multiple files detected: ${*}"; exit; fi
+}
+
+##########################################
+# Verify Input
+##########################################
+
+if [ ${#} -lt 2 ]; then usage; fi
+
+# get command line input
+parse_arguments ${*}
+
+# if not using user installed version of FSL, configure FSL
+if [ ${fslinstalled}x = "x" ]; then
+
+  # Configure FSL 
+  # .FSLSB contains SABRE essential FSL commands
+  #  SB contains the wrapper scripts for these FSL commands
+  # (this was done so that SABRE would run correctly no matter which version of FSL the user has installed)
+
+  FSLDIR=${SBBINDIR}/.FSLSB
+  export FSLDIR
+  FSLOUTPUTTYPE=ANALYZE
+  export FSLOUTPUTTYPE
+  FSLBINDIR=${FSLDIR}/bin
+
+fi
+
+# check reference and input images were supplied
+if [ ${t1}x = "x" ]; then echo "Error: must supply T1 image"; exit; fi
+if [ ${pd}x = "x" ]  && [ ${t2}x = "x" ] && [ ${fl}x = "x" ]; then echo "Error: must supply an image to register"; exit; fi
+if [ ${pd}x != "x" ] && [ ${t2}x = "x" ]; then echo "Error: must supply a T2 image to register the PD"; exit; fi
+
+# if prefix not given, guess, and if that fails, exit
+
+if [ ${pfx}x = "x" ];  then pfx=`echo ${t1} | sed "s/_[Tt]1$//"`; fi
+if [ ${pfx} = ${t1} ]; then echo "Error: can't guess prefix, use -pfx option"; exit; fi
+
+# check that files exist
+check_analyze ${t1}; 
+if [ ${t2}x != "x" ]; then check_analyze ${t2}; fi
+if [ ${pd}x != "x" ]; then check_analyze ${pd}; fi
+if [ ${fl}x != "x" ];  then check_analyze ${fl}; fi
+
+# if bet thresholds were supplied, check that corresponding image was supplied
+if [ ${flt}x != "x" ]  && [ ${fl}x = "x" ];   then echo "Error: bet threshold for FLAIR was supplied without FLAIR image"; exit; fi
+if [ ${t2t}x != "x" ] && [ ${t2}x = "x" ];  then echo "Error: bet threshold for T2 was supplied without T2 image"; exit; fi
+if [ ${pdt}x != "x" ] && [ ${pd}x = "x" ]; then echo "Error: bet threshold for PD was supplied without PD image"; exit; fi
+
+# set bet threshold for IC
+if [ ${flt}x = "x" ];  then flt=0.2; fi
+if [ ${t1t}x = "x" ]; then t1t=0.2; fi
+if [ ${pdt}x = "x" ]; then pdt=0.2; fi
+if [ ${t2t}x = "x" ];  then t2t=0.2; fi
+
+##########################################
+# Start processing
+##########################################
+
+if [ ${fixreg}x = x ]; then
+
+  # bet
+  echo "Running bet..."
+  echo "T1 bet threshold: ${t1t}"
+  if [ ${t2}x != "x" ]; then echo "T2 bet threshold: ${t2t}"; fi
+  if [ ${pd}x != "x" ]; then echo "PD bet threshold: ${pdt}"; fi
+  if [ ${fl}x != "x" ];  then echo "FL bet threshold: ${flt}"; fi
+
+  ${FSLDIR}/bin/bet ${t1} ${t1}_bet -f ${t1t}
+  if [ ${t2}x != "x" ]; then ${FSLDIR}/bin/bet ${t2} ${t2}_bet -f ${t2t}; fi
+  if [ ${pd}x != "x" ]; then ${FSLDIR}/bin/bet ${pd} ${pd}_bet -f ${pdt}; fi
+  if [ ${fl}x != "x" ]; then ${FSLDIR}/bin/bet ${fl} ${fl}_bet -f ${flt}; fi
+fi
+
+if [ ${noic}x = "x" ] # then perform inhomogeneity correction prior to coregistration
+then
+
+  if [ ${fixreg}x = x ]; then
+    # ic
+    echo "Running N3..."
+    sb_nu_correct_analyze16SI ${t1} ${t1}_bet ${t1}_nu -iterations 150 -stop 0.0001 -distance 55
+    if [ ${t2}x != "x" ]; then sb_nu_correct_analyze16SI ${t2} ${t2}_bet ${t2}_nu -iterations 150 -stop 0.0001 -distance 55; fi
+    if [ ${pd}x != "x" ]; then sb_nu_correct_analyze16SI ${pd} ${pd}_bet ${pd}_nu -iterations 150 -stop 0.0001 -distance 55; fi
+    if [ ${fl}x != "x" ]; then sb_nu_correct_analyze16SI ${fl} ${fl}_bet ${fl}_nu -iterations 150 -stop 0.0001 -distance 55; fi
+
+    # increase bet threshold for coregistration
+    t2t=`echo ${t2t} + 0.1 | bc`
+    t1t=`echo ${t1t} + 0.1 | bc`
+    flt=`echo ${flt} + 0.1 | bc`
+
+    # bet
+    echo "Re-running bet for coregistrations..."
+    echo "T1 bet threshold: ${t1t}"
+    if [ ${t2}x != "x" ]; then echo "T2 bet threshold: ${t2t}"; fi
+    #if [ ${pd}x != "x" ]; then echo "PD bet threshold: ${pdt}"; fi
+    if [ ${fl}x != "x" ];  then echo "FL bet threshold: ${flt}"; fi
+  
+    ${FSLDIR}/bin/bet ${t1}_nu ${t1}_bet -f ${t1t}
+    if [ ${t2}x != "x" ]; then ${FSLDIR}/bin/bet ${t2}_nu ${t2}_bet -f ${t2t}; fi
+    if [ ${fl}x != "x" ];  then ${FSLDIR}/bin/bet ${fl}_nu ${fl}_bet -f ${flt}; fi
+
+    # coregister
+    echo "Coregistering..."
+    if [ ${t2}x != "x" ]; then sb_coregister_INtoREF -ref ${t1}_bet -in ${t2}_bet -omat ${pfx}_T2_to_T1.omat; fi
+    if [ ${fl}x != "x" ];  then sb_coregister_INtoREF -ref ${t1}_bet -in ${fl}_bet -omat ${pfx}_FL_to_T1.omat; fi
+
+  fi
+  # reslice
+  echo "Reslicing..."
+  if [ ${t2}x != "x" ]; then sb_reslice_INtoREF -ref ${t1} -in ${t2}_nu -init ${pfx}_T2_to_T1.omat -out ${pfx}_T1acq_nu_T2; fi
+  if [ ${t2}x != "x" ]; then sb_reslice_INtoREF -ref ${t1} -in ${t2}    -init ${pfx}_T2_to_T1.omat -out ${pfx}_T1acq_T2_temp -interp sinc; fi
+  if [ ${pd}x != "x" ]; then sb_reslice_INtoREF -ref ${t1} -in ${pd}_nu -init ${pfx}_T2_to_T1.omat -out ${pfx}_T1acq_nu_P; fi
+  if [ ${pd}x != "x" ]; then sb_reslice_INtoREF -ref ${t1} -in ${pd}    -init ${pfx}_T2_to_T1.omat -out ${pfx}_T1acq_P_temp -interp sinc; fi
+  if [ ${fl}x  != "x" ]; then sb_reslice_INtoREF -ref ${t1} -in ${fl}_nu -init ${pfx}_FL_to_T1.omat -out ${pfx}_T1acq_nu_FL; fi
+  if [ ${fl}x  != "x" ]; then sb_reslice_INtoREF -ref ${t1} -in ${fl}    -init ${pfx}_FL_to_T1.omat -out ${pfx}_T1acq_FL_temp -interp sinc; fi
+
+else # do not peform inhomogeneity correction prior to registration
+
+  if [ ${fixreg}x = "x" ]; then
+  
+     # coregister
+    echo "Coregistering..."
+    if [ ${t2}x != "x" ]; then sb_coregister_INtoREF -ref ${t1}_bet -in ${t2}_bet -omat ${pfx}_T2_to_T1.omat; fi
+    if [ ${fl}x != "x" ]; then sb_coregister_INtoREF -ref ${t1}_bet -in ${fl}_bet -omat ${pfx}_FL_to_T1.omat; fi
+
+  fi
+  
+  # reslice
+  echo "Reslicing..."
+
+  if [ ${t2}x != "x" ]; then sb_reslice_INtoREF -ref ${t1} -in ${t2}    -init ${pfx}_T2_to_T1.omat -out ${pfx}_T1acq_T2_temp -interp sinc; fi
+  if [ ${pd}x != "x" ]; then sb_reslice_INtoREF -ref ${t1} -in ${pd}    -init ${pfx}_T2_to_T1.omat -out ${pfx}_T1acq_P_temp -interp sinc; fi
+  if [ ${fl}x  != "x" ]; then sb_reslice_INtoREF -ref ${t1} -in ${fl}    -init ${pfx}_FL_to_T1.omat -out ${pfx}_T1acq_FL_temp -interp sinc; fi
+
+
+fi
+
+  # threshold resliced images to remove negative voxels
+  #if [ ${fl}x  != "x" ]; then  ${SBBINDIR}/.FSLSB/bin/avwmaths ${pfx}_T1acq_FL_temp -thr 0 ${pfx}_T1acq_FL; rm ${pfx}_T1acq_FL_temp.*;  fi
+  #if [ ${pd}x != "x" ]; then ${SBBINDIR}/.FSLSB/bin/avwmaths ${pfx}_T1acq_P_temp -thr 0 ${pfx}_T1acq_P; rm ${pfx}_T1acq_P_temp.*; fi
+  #if [ ${t2}x != "x" ]; then ${SBBINDIR}/.FSLSB/bin/avwmaths ${pfx}_T1acq_T2_temp -thr 0 ${pfx}_T1acq_T2; rm ${pfx}_T1acq_T2_temp.*; fi 
+if [ ${fl}x  != "x" ]; then  ${SBBINDIR}/SB/bin/imgmath ${pfx}_T1acq_FL_temp.img -thr 0 ${pfx}_T1acq_FL.img; rm ${pfx}_T1acq_FL_temp.*;  fi
+if [ ${pd}x != "x" ]; then ${SBBINDIR}/SB/bin/imgmath ${pfx}_T1acq_P_temp.img -thr 0 ${pfx}_T1acq_P.img; rm ${pfx}_T1acq_P_temp.*; fi
+if [ ${t2}x != "x" ]; then ${SBBINDIR}/SB/bin/imgmath ${pfx}_T1acq_T2_temp.img -thr 0 ${pfx}_T1acq_T2.img; rm ${pfx}_T1acq_T2_temp.*; fi 
+
+if [ ${fixreg}x = x ]; then
+  # remove bet images
+  rm ${t1}_bet.*;
+  if [ ${pd}x != "x" ]; then rm ${pd}_bet.*; fi
+  if [ ${t2}x != "x" ]; then rm ${t2}_bet.*; fi
+  if [ ${fl}x != "x" ]; then rm ${fl}_bet.*; fi
+fi

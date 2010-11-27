@@ -1,0 +1,79 @@
+#!/bin/sh
+
+
+##########################################
+# thresholds to use * 10 
+#  e.g. "1" would be passed to bet as 0.1
+thresholds="1 2 3 4 5 6 7 8 9"
+###########################################
+
+
+
+# Usage
+if [ ${#} -lt 1 ]
+then
+  cmdname=`basename ${0}`
+  echo ""
+  echo "Usage:"
+  echo "  ${cmdname} <image1> ... <imageN>"
+  echo "Purpose:"
+  echo "  - run bet on input images using multiple thresholds"
+  echo "Notes:"
+  echo "  - useful when a good bet threshold is not known in advance"
+  echo "Examples:"
+  echo "  ${cmdname} *.img"
+  echo "  ${cmdname} imageA"
+  echo "  ${cmdname} imageA imageB"
+  echo ""
+  exit
+fi # end Usage
+
+
+# Check for SBBINDIR environment variable
+if [ ${SBBINDIR}x = "x" ]
+then
+  echo "Error:  SBBINDIR enviornment variable is not set"
+  exit
+fi
+
+# Configure FSL 
+FSLDIR=${SBBINDIR}/.FSLSB
+export FSLDIR
+FSLOUTPUTTYPE=ANALYZE
+export FSLOUTPUTTYPE
+FSLBINDIR=${FSLDIR}/bin
+
+#************************************************************************
+#************************************************************************
+
+for file in ${*}
+do
+  
+  # remove image/header extension, if given
+  file=`echo ${file} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`
+  
+  # check that image file exists
+  if [ ! -f ${file}.img ]
+  then
+    echo "Error:  ${file}.img does not exist"
+    continue
+  fi
+  # check that header file exists
+  if [ ! -f ${file}.hdr ]
+  then
+    echo "Error:  ${file}.hdr does not exist"
+    continue
+  fi
+
+  # run bet on image using each threshold in ${thresholds}
+  echo "starting bet on ${file}"
+  
+  for thresh in ${thresholds}
+  do   
+ 		filename=`basename ${file}`
+    ${FSLBINDIR}/bet ${file} ${filename}_bet_${thresh} -f 0.${thresh}
+  done
+
+
+done
+

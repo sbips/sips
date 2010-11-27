@@ -1,0 +1,205 @@
+#!/bin/sh
+##########################################
+# Written 20/11/2010 by eg
+##########################################
+
+
+##########################################
+# Define Functions
+##########################################
+
+# Output command line usage information.
+Usage()
+{
+  cmd=`basename ${0}`
+  echo ""
+  echo "${cmd} - PD/T2 Hyperintensity Segmentation Tool"
+  echo ""
+  echo "Usage: ${cmd} -t2 <img> -pd <img> -out <pfx> [options]"
+  echo ""
+  echo "Required Input Images:"
+  echo "  -t2 <img>:  Masked, intensity inhomogeneity corrected T2"
+  echo "  -pd <img>:  Masked, intensity inhomogeneity corrected PD"
+  echo "  -out <pfx>: Output image prefix" 
+  echo ""
+  echo "Optional Input Images: (required for false positive minimization)"
+  echo "  -seg <img>: T1 segmentation with VCSF relabelled"
+  echo "  -t1 <img>:  Masked, intensity inhomogeneity corrected T1"
+  echo ""
+  echo "Options:"
+  echo "  -vdilatecross <int>:  Dilate VCSF with cross SE of radius <int>"
+  echo "  -vdilateball <int>:   Dilate VCSF with ball SE of radius <int>, default 1"
+  echo "  -minobjectsize <int>: Keeps lesions that are >= <int> voxels, default 5"
+  echo "  -forcefcm:            Forces generation of _fc_mc4_ex2 image, default false"
+  echo "  -pdt <int>:           PD threshold for segmentation, default 0.02"
+  echo "  -t2t <int>:           T2 threshold for segmentation, default 0.05"
+  echo "  -ct <int>             Threshold for CSFGM (>0 and <1000), default 150"
+  echo "  -vcsf <int>:          Value assigned to VCSF on the T1 segmentation, default 7"
+  echo ""
+  exit
+}
+
+parse_arguments(){
+  while [ ${#} -gt 0 ]
+  do
+    case ${1} in
+    -pd)
+      shift; pd=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -t2)
+      shift; t2=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -seg)
+      shift; seg=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -t1)
+      shift; t1=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;      
+    -out)
+      shift; out=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;      
+    -t2t)
+      shift; t2t=${1}; shift;;
+    -pdt)
+      shift; pdt=${1}; shift;;
+    -ct)
+      shift; ct=${1}; shift;;      
+    -vdilateball)
+        shift; vdilateball=${1}; shift;;
+    -vdilatecross)
+        shift; vdilatecross=${1}; shift;;	
+    -minobjectsize)
+        shift; minobjectsize=${1}; shift;;
+    -vcsf)
+       shift; vcsf=${1}; shift;;
+    -forcefcm)
+       shift; forcefcm="true";;
+     -help)
+      usage;;
+    *)
+      echo "Error: unknown option ${1}"; exit;;
+    esac
+  done
+}
+
+check_analyze(){
+  if [ ! -f ${1}.img ]; then echo "Error:  ${1}.img not found"; exit; fi
+  if [ ! -f ${1}.hdr ]; then echo "Error:  ${1}.hdr not found"; exit; fi
+  if [ ${2}x != "x" ];  then echo "Error: Multiple files detected: ${*}"; exit; fi
+}
+
+##########################################
+# Verify Input= "
+##########################################
+
+# Output usage message and exit 
+if [ $# -lt 4 ]; then Usage; fi
+
+parse_arguments ${*}
+
+if [ ${t2}x = "x" ];    then echo "Error: must supply T2 image with -t2 option"; exit; fi
+if [ ${pd}x = "x" ];    then echo "Error: must supply PD image with -pd option"; exit; fi
+if [ ${out}x = "x" ];   then echo "Error: must supply output image with -out option"; exit; fi
+
+if [ ${t1}x != "x" ]; then
+  if [ ${seg}x = "x" ]; then 
+    echo "Error: must supply -seg option with -t1 option"; exit; 
+  fi
+fi
+
+if [ ${t2t}x = "x" ];   then t2t=2.00; fi
+if [ ${pdt}x = "x" ];   then pdt=0.06; fi
+if [ ${vcsf}x = "x" ];   then vcsf=7; fi
+if [ ${ct}x = "x" ];      then ct=150; fi
+if [ ${minobjectsize}x = "x" ]; then minobjectsize=5; fi
+if [ ${vdilatecross}x = "x" ] && [ ${vdilateball}x = "x" ]; then vdilateball=1; fi;
+if [ ${forcefcm}x = "x" ]; then forcefcm="false"; fi
+
+echo t1:   ${t1}
+echo t2:   ${t2}
+echo pd:   ${pd}
+echo seg: ${seg}
+echo out: ${out}
+echo t2t:  ${t2t}
+echo pdt:  ${pdt}
+echo ct:    ${ct}
+echo vdilatecross:   ${vdilatecross}
+echo vdilateball:     ${vdilateball}
+echo minobjectsize: ${minobjectsize}
+echo vcsf:       ${vcsf}
+echo forcefcm:  ${forcefcm}
+echo ""
+echo ""
+
+# Check that image and header exist
+if [ ${t1}x != "x" ];  then check_analyze ${t1}; fi
+if [ ${t2}x != "x" ];  then check_analyze ${t2}; fi
+if [ ${pd}x != "x" ]; then check_analyze ${pd}; fi
+if [ ${seg}x != "x" ]; then check_analyze ${seg}; fi
+
+##########################################
+# Start processing
+##########################################
+
+
+## *** SEGMENT PD / T2 *** ##
+
+${SBBINDIR}/SB/bin/pdt2seg ${pd}.img ${t2}.img ${pdt} ${t2t} 20 ${out}.img
+
+## *** CREATE CSFGM MASK AND/OR VCSF MASK *** ##
+
+if [  ${t1}${seg}x != "x" ] ; then
+
+  # CSFGM mask
+  if [ ${t1}x != x ]; then
+    if [ ! -f ${t1}_masked_fc4_mc2_ex2.img ] || [ ${forcefcm} = "true" ]; then
+    #${SBBINDIR}/SB/bin/mask_img ${t1} ${seg} -m 0   
+    # run FCM on masked T1
+    ${SBBINDIR}/FLEX/bin/FLEX_fcm ${t1}.img 4  2 100 0.00001
+    rm ${t1}_fc4_mc[1,3-4]_ex2.*
+    fi
+
+    # create SCSFGM (sulcal-CSF-GM) mask
+    ${SBBINDIR}/SB/bin/SCSFGM ${seg}.img ${t1}_fc4_mc2_ex2.img ${t1} ${ct}
+  fi
+
+  # VCSF mask
+  if [ ${seg}x != "x" ]; then
+
+    # dilate VCSF (removing VCSF-WMH partial volume voxels)
+    if [ ${vdilateball}x = "x" ] && [ ${vdilatecross}x = "x" ]; then vdilatecross=1; echo "yes"; fi
+    echo ${vdilatecross}
+    if [ ${vdilateball}x = "x" ]; then 
+      ${SBBINDIR}/SB/bin/dilate2D ${seg}.img ${seg}_dilated.img ${vcsf} ${vdilatecross} 1
+    else
+      ${SBBINDIR}/SB/bin/dilate2D ${seg}.img ${seg}_dilated.img ${vcsf} ${vdilateball} 2
+    fi
+  
+  fi
+fi
+
+
+## *** FALSE POSITIVE MINIMIZATION *** ##
+
+if [ ${t1}x != "x" ] && [ ${seg}x != "x" ]; then
+  ${SBBINDIR}/SB/bin/mask_img ${out}_pdt2seg ${seg}_dilated -o ${out}_pdt2seg_temp_fpm_masked -m ${vcsf}
+  ${SBBINDIR}/SB/bin/mask_img ${out}_pdt2seg_temp_fpm_masked  ${t1}_csfgm -o ${out}_pdt2seg_fpm_masked -m 0 1
+  ${SBBINDIR}/SB/bin/keep_large_objects ${out}_pdt2seg_fpm_masked.img ${minobjectsize} ${out}_pdt2seg_fpm_masked_klo.img
+  rm ${out}_pdt2seg_temp_fpm_masked.*
+fi
+
+if [ ${t1}x == "x" ] && [ ${seg}x != "x" ]; then
+  ${SBBINDIR}/SB/bin/mask_img ${out}_pdt2seg ${seg}_dilated -o ${out}_pdt2seg_fpm_masked -m ${vcsf}
+   ${SBBINDIR}/SB/bin/keep_large_objects ${out}_pdt2seg_fpm_masked.img ${minobjectsize} ${out}_pdt2seg_fpm_masked_klo.img
+fi
+
+
+## *** KEEP LARGE OBJECTS  *** ##
+
+# if T1 or T1/T1seg was provided, remove small objects
+if [ ${t1}x != "x" ] || [ ${seg}x != "x" ]; then
+  ${SBBINDIR}/SB/bin/keep_large_objects ${out}_pdt2seg_fpm_masked_klo.img ${minobjectsize} ${out}_pdt2seg_fpm_masked_klo.img
+  ${SBBINDIR}/SB/bin/imgmath ${out}_pdt2seg_fpm_masked_klo.img -add ${out}_pdt2seg.img ${out}_pdt2seg_fpm_klo.img
+  rm ${out}_pdt2seg_fpm_masked.*
+fi
+
+# if T1 or T1/T1seg was not provided, do not remove small objects
+if [  ${t1}${seg}x == "x" ] ; then
+  echo ""
+  echo "No false positive minimization performed (no T1seg and/or T1 was provided)"
+fi

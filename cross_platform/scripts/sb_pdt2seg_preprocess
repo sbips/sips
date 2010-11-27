@@ -1,0 +1,112 @@
+#!/bin/sh
+
+
+# e.g. SBBINDIR=/opt/sb/egibson/linux or /windows or /unix
+# SBBINDIR must contain /SB and /.FSLSB and /.HFB
+if [ ${SBBINDIR}x = "x" ]; then echo "Error:  SBBINDIR enviornment variable is not set"; exit; fi
+
+##########################################
+# Define functions
+##########################################
+
+usage(){
+  cmdname=`basename ${0}`
+  echo ""
+  echo "${cmdname} - Preprocess PD/T2 Images for Lesion Segmentation"
+  echo ""
+  echo "Usage:  ${cmdname} -t2 <img> -pd <img> -hfb <img>"
+  echo ""
+  echo "  -t2 <img>:     (uncorrected, skull-on, T2 image)"
+  echo "  -pd <img>:     (uncorrected, skull-on, PD image)"
+  echo "  -hfb <img>:    (head-from-brain mask, 1's or 8's for brain)"
+  echo ""
+  echo "Notes:"
+  echo "  -Images are masked and corrected for intensity inhomogeneities with N3"
+  exit;
+}
+
+
+parse_arguments(){
+  while [ ${#} -gt 0 ]
+  do
+    case ${1} in
+    -hfb)
+      shift; hfb=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -t2)
+      shift; t2=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -pd)
+      shift; pd=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -fslinstalled)
+      shift; fslinstalled="true";;
+    -help)
+      usage;;
+    *)
+      echo "Error: unknown option ${1}"; exit;;
+    esac
+  done
+}
+
+check_analyze(){
+  if [ ! -f ${1}.img ]; then echo "Error:  ${1}.img not found"; exit; fi
+  if [ ! -f ${1}.hdr ]; then echo "Error:  ${1}.hdr not found"; exit; fi
+  if [ ${2}x != "x" ];  then echo "Error: Multiple files detected: ${*}"; exit; fi
+}
+
+##########################################
+# Verify Input
+##########################################
+
+if [ ${#} -lt 6 ]; then usage; fi
+
+# get command line input
+parse_arguments ${*}
+
+# if not using user installed version of FSL, configure FSL
+if [ ${fslinstalled}x = "x" ]; then
+
+  # Configure FSL 
+  # .FSLSB contains SABRE essential FSL commands
+  #  SB contains the wrapper scripts for these FSL commands
+  # (this was done so that SABRE would run correctly no matter which version of FSL the user has installed)
+
+  FSLDIR=${SBBINDIR}/.FSLSB
+  export FSLDIR
+  FSLOUTPUTTYPE=ANALYZE
+  export FSLOUTPUTTYPE
+  FSLBINDIR=${FSLDIR}/bin
+
+fi
+
+
+if [ ${t2}x = "x" ]; then echo "Error: must supply T2 image"; exit; fi
+if [ ${pd}x = "x" ]; then echo "Error: must supply PD image"; exit; fi
+if [ ${hfb}x = "x" ]; then echo "Error: must supply head-from-brain mask"; exit; fi
+
+check_analyze ${t2}
+check_analyze ${pd}
+check_analyze ${hfb}
+
+##########################################
+# Start processing
+##########################################
+
+# create prefix for temporary files
+tpfx=`basename ${0}`
+
+# mask images (1's or 8's for brain)
+${SBBINDIR}/SB/bin/mask_img ${t2} ${hfb} -m 0 2 3 4 5 6 7 -o ${tpfx}_t2_masked
+${SBBINDIR}/SB/bin/mask_img ${pd} ${hfb} -m 0 2 3 4 5 6 7 -o ${tpfx}_pd_masked
+
+# correct images with N3
+sb_nu_correct_analyze16SI ${tpfx}_t2_masked ${tpfx}_t2_masked ${tpfx}_t2_masked_nu -iterations 200 -stop 0.00001 -distance 55
+sb_nu_correct_analyze16SI ${tpfx}_pd_masked ${tpfx}_pd_masked ${tpfx}_pd_masked_nu -iterations 200 -stop 0.00001 -distance 55
+
+# mask images again (in case N3 intoduced negative numbers)
+${SBBINDIR}/SB/bin/mask_img ${tpfx}_pd_masked_nu ${hfb} -m 0 2 3 4 5 6 7 -o ${pd}_mc
+${SBBINDIR}/SB/bin/mask_img ${tpfx}_t2_masked_nu ${hfb} -m 0 2 3 4 5 6 7 -o ${t2}_mc
+
+# remove temporary files
+rm ${tpfx}_t2_masked.*
+rm ${tpfx}_pd_masked.*
+rm ${tpfx}_t2_masked_nu.*
+rm ${tpfx}_pd_masked_nu.*

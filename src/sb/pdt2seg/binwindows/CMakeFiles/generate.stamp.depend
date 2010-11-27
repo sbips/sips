@@ -1,0 +1,26 @@
+# CMake generation dependency list for this directory.
+Y:/data/le2/c++/CMakeLists.txt
+Y:/data/le2/c++/binwindows/CMakeFiles/CMakeSystem.cmake
+Y:/data/le2/c++/binwindows/CMakeFiles/CMakeCCompiler.cmake
+Y:/data/le2/c++/binwindows/CMakeFiles/CMakeCXXCompiler.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/CMakeSystemSpecificInformation.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/CMakeGenericSystem.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/Platform/gcc.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/Platform/Windows.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/Platform/WindowsPaths.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/CMakeCInformation.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/Platform/Windows-cl.cmake
+Y:/data/le2/c++/binwindows/CMakeFiles/CMakeCPlatform.cmake
+Y:/data/le2/c++/binwindows/CMakeFiles/CMakeCXXPlatform.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/Platform/cl.cmake
+Y:/data/le2/c++/binwindows/CMakeFiles/CMakeRCCompiler.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/CMakeRCInformation.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/CMakeCommonLanguageInclude.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/CMakeCXXInformation.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/CMakeCommonLanguageInclude.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/FindITK.cmake
+C:/erin/MVS2008/InsightToolkit-3.14.0-build/ITKConfig.cmake
+C:/erin/MVS2008/InsightToolkit-3.14.0-build/ITKLibraryDepends.cmake
+C:/erin/MVS2008/InsightToolkit-3.14.0-build/UseITK.cmake
+C:/Program Files (x86)/CMake 2.6/share/cmake-2.6/Modules/CMakeImportBuildSettings.cmake
+C:/erin/MVS2008/InsightToolkit-3.14.0-build/ITKBuildSettings.cmake

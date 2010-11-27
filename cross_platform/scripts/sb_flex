@@ -1,0 +1,175 @@
+#!/bin/sh
+##########################################
+# Written 02/23/08 by eg
+##########################################
+
+# Modified script to work with fully processed FLAIR input.
+
+
+##########################################
+# Define Functions
+##########################################
+
+# Output command line usage information.
+Usage()
+{
+  cmd=`basename ${0}`
+  echo ""
+  echo "Usage: ${cmd} -fl <flair> [options]"
+  echo ""
+  echo "    -fl <vol>:     (flair image, masked and, if req'd, bias-corrected)"
+  echo "    -pfx <pfx>:    (output prefix, optional)"
+  echo "    -wt <float>:   (WM template threshold, default=160)"
+  echo "    -nt <float>:   (normalized FLAIR threshold, default=4.6)"
+  echo "    -at <float>:   (axial FLAIR FCM threshold, default=100)"
+  echo "    -ct <float>:   (coronal FLAIR FCM threshold, default=100)"
+  echo "    -fslinstalled: (use user installed version of FSL)"
+  echo ""
+  echo "  Purpose:  Segment WMH on FLAIR using Fuzzy C-Means."
+  echo ""
+  echo "  Notes:"
+  echo "    - For 3T data, the best bias correction was achieved using FSL's"
+  echo "      mfast with the T2 image as the secondary input."
+  echo "    - For 1.5T data, a bias correction may not be necessary.  However,"
+  echo "      correction with FSL's fast may benefit the procedure."
+  echo "    - The masking should be reasonable, but does not need to be perfect.  Only"
+  echo "      bright non-brain voxels may interfere with the identification of"
+  echo "      hyperintensities.  Therefore, some care should be taken to ensure that"
+  echo "      most bright non-brain voxels are removed prior to running FLEX."
+  echo " "
+  echo "  Requirements:"
+  echo "    - SBBINDIR environment variable must be set"
+  echo "      (platform specific folder containing FLEX/bin)"
+  echo "    - folder containing ${cmd} must be added to path"
+  echo ""
+  exit
+}
+
+parse_arguments(){
+  while [ ${#} -gt 0 ]
+  do
+    case ${1} in
+    -fl)
+      shift; fl=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -pfx)
+      shift; pfx=${1}; shift;;
+    -wt)
+      shift; wt=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -nt)
+      shift; nt=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -at)
+      shift; at=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -ct)
+      shift; ct=${1}; shift;;
+    -fslinstalled)
+      shift; fslinstalled="true";;
+    -help)
+      usage;;
+    *)
+      echo "Error: unknown option ${1}"; exit;;
+    esac
+  done
+}
+
+check_analyze(){
+  if [ ! -f ${1}.img ]; then echo "Error:  ${1}.img not found"; exit; fi
+  if [ ! -f ${1}.hdr ]; then echo "Error:  ${1}.hdr not found"; exit; fi
+  if [ ${2}x != "x" ];  then echo "Error: Multiple files detected: ${*}"; exit; fi
+}
+
+##########################################
+# Verify Input
+##########################################
+
+# Output usage message and exit 
+if [ $# -lt 2 ]; then Usage; fi
+
+parse_arguments ${*}
+
+if [ ${fl}x = "x" ];   then echo "Error: must supply FLAIR image with -fl option"; exit; fi
+if [ ${pfx}x = "x" ];  then pfx=${fl}; fi
+if [ ${wt}x = "x" ];   then wt=160; fi
+if [ ${at}x = "x" ];   then at=100; fi
+if [ ${ct}x = "x" ];   then ct=100; fi
+if [ ${nt}x = "x" ];   then nt=4.6; fi
+flthresh_ax=${at} 
+flthresh_cor=${ct}
+wmt_threshold=${wt} 
+norm_thresh=${nt}
+
+# Check that image and header exist
+check_analyze ${fl}
+
+##########################################
+# Start processing
+##########################################
+
+echo "Diffusion filtering images..."
+# Apply anisotropic diffusion filter on FLEX_masked images.
+${SBBINDIR}/FLEX/bin/FLEX_adf ${fl}.img ${pfx}_temp_flf.img 5 0.0625 1.95
+
+echo "Removing non-brain voxels..."
+# Skull-strip images.
+# ** Must be done after diffusion filtering because diffusion filtering can
+#     produce non-zero voxels corresponding to zero voxels in the input image.
+#     (this is the result of running the diffusion filter in 3D)
+${SBBINDIR}/FLEX/bin/FLEX_mask ${pfx}_temp_flf.img ${fl}.img ${pfx}_flf.img
+
+echo "Normalizing FLAIR..."
+${SBBINDIR}/FLEX/bin/FLEX_normalize ${pfx}_flf.img ${pfx}_flf_norm.img
+
+# Remove voxels above threshold on the FLEX_normalized FLAIR.
+${SBBINDIR}/FLEX/bin/FLEX_zero_norm_voxels ${pfx}_flf.img ${pfx}_flf_norm.img ${norm_thresh} ${pfx}_temp_flf_norm_FLEX_masked.img
+
+echo "Running fuzzy clustering on FLAIR image..."
+# A.  Cluster axial and coronal FLAIR images 
+#        (input = FLAIR masked with voxels above normalized threshold removed)
+
+# Create coronal flair image.
+${SBBINDIR}/FLEX/bin/FLEX_to_coronal ${pfx}_temp_flf_norm_FLEX_masked.img ${pfx}_temp_flf_cor_norm_FLEX_masked.img
+${SBBINDIR}/FLEX/bin/FLEX_to_coronal ${pfx}_flf.img ${pfx}_temp_flf_cor.img
+
+# Run fuzzy clustering on axial and sagittal flair images.
+${SBBINDIR}/FLEX/bin/FLEX_fcm ${pfx}_temp_flf_norm_FLEX_masked.img 2 2 100 0.00001
+${SBBINDIR}/FLEX/bin/FLEX_fcm ${pfx}_temp_flf_cor_norm_FLEX_masked.img 2 2 100 0.00001
+
+rm ${pfx}_temp_flf_norm_FLEX_masked_fc2_mc2_ex2.*
+rm ${pfx}_temp_flf_cor_norm_FLEX_masked_fc2_mc2_ex2.*
+mv ${pfx}_temp_flf_norm_FLEX_masked_fc2_mc1_ex2.hdr ${pfx}_flf_fc2_mc1_ex2.hdr
+mv ${pfx}_temp_flf_norm_FLEX_masked_fc2_mc1_ex2.img ${pfx}_flf_fc2_mc1_ex2.img
+
+echo "Finding flair hyperintensities..."
+# Convert coronal results to axial (not used; kept only for future reference).
+${SBBINDIR}/FLEX/bin/FLEX_to_axial ${pfx}_temp_flf_cor_norm_FLEX_masked_fc2_mc1_ex2.img ${pfx}_flf_cor_fc2_mc1_ex2_ax.img
+
+# Find flair hyperintensities in membership class 1 in coronal orientation.
+${SBBINDIR}/FLEX/bin/FLEX_fcm_flair ${pfx}_temp_flf_cor_norm_FLEX_masked_fc2_mc1_ex2.img ${pfx}_temp_flf_cor.img ${pfx}_temp_cor ${flthresh_cor} 1000
+# Convert identified coronal flair hyperintensities to an axial image
+${SBBINDIR}/FLEX/bin/FLEX_to_axial ${pfx}_temp_cor_flhyper.img ${pfx}_temp_cor_flhyper_ax.img
+
+# Find flair hyperintensities in membership class 1 in axial orientation.
+${SBBINDIR}/FLEX/bin/FLEX_fcm_flair ${pfx}_flf_fc2_mc1_ex2.img ${pfx}_flf.img ${pfx}_temp_ax ${flthresh_ax} 1000
+
+echo "Combining stuff..."
+# Only accept hyperintensities above threshold on axial and coronal FLEX_fcm results
+${SBBINDIR}/FLEX/bin/FLEX_min ${pfx}_temp_ax_flhyper.img ${pfx}_temp_cor_flhyper_ax.img ${pfx}_axcor_flhyper.img
+
+echo "Registering white matter template..."
+T1_template="${SBBINDIR}/FLEX/bin/avg_T1_masked_int"
+WM_template="${SBBINDIR}/FLEX/bin//avgWM"
+
+if [ ${fslinstalled}x = "x" ]; then
+  sb_flirt -in ${T1_template} -ref ${pfx}_flf -omat ${pfx}_WMT_to_subject.omat -dof 12 -cost normmi -searchcost normmi
+  sb_flirt -in ${WM_template} -ref ${pfx}_flf -init ${pfx}_WMT_to_subject.omat -out ${pfx}_WMT_to_subject -applyxfm -nosearch
+else
+  flirt -in ${T1_template} -ref ${pfx}_flf -omat ${pfx}_WMT_to_subject.omat -dof 12 -cost normmi -searchcost normmi
+  flirt -in ${WM_template} -ref ${pfx}_flf -init ${pfx}_WMT_to_subject.omat -out ${pfx}_WMT_to_subject -applyxfm -nosearch
+fi
+echo "False positive minimization..."
+# Minimize false positives by removing lesions not connected in 3D to the thresholded white matter template.
+${SBBINDIR}/FLEX/bin/FLEX_lesionWMT ${pfx}_axcor_flhyper.img ${pfx}_WMT_to_subject.img ${wmt_threshold} ${pfx}
+
+rm ${pfx}_temp_*
+
+echo ""
+echo "Finished!!"

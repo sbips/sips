@@ -1,0 +1,69 @@
+#!/bin/sh
+##########################################
+# Written 02/23/08 by eg
+##########################################
+
+##########################################
+# Set environment variables
+##########################################
+
+# e.g. SBBINDIR=/opt/sb/egibson/linux or /windows or /unix
+# SBBINDIR must contain /SB and /.FSLSB and /.HFB
+if [ ${SBBINDIR}x = "x" ]; then echo "Error:  SBBINDIR enviornment variable is not set"; exit; fi
+
+# Configure FSL 
+# .FSLSB contains SABRE essential FSL commands
+#  SB contains the wrapper scripts for these FSL commands
+# (this was done so that SABRE would run correctly no matter which version of FSL the user has installed)
+
+FSLDIR=${SBBINDIR}/.FSLSB
+export FSLDIR
+FSLOUTPUTTYPE=ANALYZE
+export FSLOUTPUTTYPE
+FSLBINDIR=${FSLDIR}/bin
+
+##########################################
+# Define functions
+##########################################
+
+usage(){
+  cmdname=`basename ${0}`
+  echo "Usage:"
+  echo "  ${cmdname} <imgIN>"
+  echo ""
+  echo "Purpose:"
+  echo "  -${cmdname} creates an image with isotropic voxel dimensions"
+  echo ""
+  echo "Notes"
+  echo "  -for SABRE, T1 input should be bias-corrected, if necessary, and non-skull"
+  echo "   stripped (e.g. the 3T T1_nu image or the 1.5T T1 image)"
+  echo ""
+  exit;
+}
+
+check_analyze(){
+  if [ ! -f ${1}.img ]; then echo "Error:  ${1}.img not found"; exit; fi
+  if [ ! -f ${1}.hdr ]; then echo "Error:  ${1}.hdr not found"; exit; fi
+  if [ ${2}x != "x" ];  then echo "Error: Multiple files detected: ${*}"; exit; fi
+}
+
+##########################################
+# Verify Input
+##########################################
+
+if [ ${#} -ne 1 ]; then usage; fi
+
+# get t1 filename
+t1=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`
+
+# check that files exist
+check_analyze ${t1};
+
+##########################################
+# Start processing
+##########################################
+
+
+
+${SBBINDIR}/SB/bin/make_isotropic ${t1}.img ${t1}_fc.img 
+

@@ -1,0 +1,131 @@
+#!/bin/sh
+
+# requires:
+  # mnc2nii, nii2mnc (MINC)
+  # nu_correct (N3)
+
+##########################################################################################
+# Check for SBBINDIR environment variable
+if [ ${SBBINDIR}x = "x" ]
+then
+  echo "Error:  SBBINDIR enviornment variable is not set"
+  exit
+fi
+
+# Configure N3
+PERL5LIB=${SBBINDIR}/N3/perlib/Getopt-Tabular-0.3/blib/lib:${SBBINDIR}/N3/perlib/mni_perllib-0.07/blib/lib:${SBBINDIR}/N3/perlib/mni_perllib-0.07/
+export PERL5LIB
+MNI_DATAPATH=${SBBINDIR}/N3/data
+export MNI_DATAPATH
+PATH=${SBBINDIR}/N3/bin/:${PATH}
+export PATH
+
+# Configure FSL 
+# .FSLSB contains SABRE essential FSL commands
+# SB contains the wrapper scripts for these FSL commands
+# (this was done so that SABRE would run correctly 
+#  no matter which version of FSL the user has installed)
+FSLDIR=${SBBINDIR}/.FSLSB
+export FSLDIR
+FSLOUTPUTTYPE=ANALYZE
+export FSLOUTPUTTYPE
+
+##########################################################################################
+
+if [ ${#} -lt 3 ]
+then
+  cmdname=`basename ${0}`
+  echo "Usage:"
+  echo "  ${cmdname} <image> <mask> <output> [options]"
+  echo ""
+  echo "Example:"
+  echo "  ${cmdname} T1 T1_bet T1_nu -iterations 150 -stop 0.0001 -distance 55"
+  echo ""
+  echo "Notes:"
+  echo " -input can be char, integer or float, output will be integer or float"
+  echo ""
+  exit
+fi
+
+
+# remove extension, if given
+
+image_in=`echo ${1} | sed "s/.\img//" | sed "s/\.hdr//" | sed "s/\.//"`
+image_mask=`echo ${2} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.//"`
+image_out=`echo ${3} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.//"`
+
+
+# get arguments to pass to nu_correct
+
+while [ $# -ne 3 ]
+do
+  nu_args=${nu_args}" "${4}
+  shift;
+done
+
+
+# convert input images from analyze to minc format
+
+echo ""
+echo "Converting data to minc format..."
+
+nii2mnc  ${image_in}.hdr  ${image_in}.mnc -float 1> /dev/null 
+nii2mnc  ${image_mask}.hdr ${image_mask}.mnc -float 1> /dev/null 
+
+
+# adjust values in mask image (to appease N3)
+mincmath -gt -const 0 ${image_mask}.mnc ${image_mask}_new.mnc -float 1> /dev/null 
+
+# run N3
+echo ""
+echo "Running N3:"
+echo ""
+nu_correct -mask ${image_mask}_new.mnc ${nu_args} ${image_in}.mnc  tempnu.mnc -clobber
+echo ""
+
+echo ""
+echo "Converting data to analyze format..."
+mnc2nii tempnu.mnc tempnu2.hdr -float
+
+
+
+# convert datatype from floats
+datatype=`${SBBINDIR}/SB/bin/get_datatype ${image_in}.img`
+
+# header fix (orientation problem) 
+# recreate input image (needed for new header because cosine info in header is not properly handled by mnc2nii converter --
+#  (i.e. axial images become transverse if passed through ITK)
+#${SBBINDIR}/SB/bin/imgmath ${image_in}.img -min ${image_in}.img temphdr.img 
+
+case ${datatype}x in
+  1x|2x|3x|4x|5x|6x)
+    # all char/int datatypes are written as shorts because nu_correct alters intensity values and can exceed range of char
+    # and because unsigned short is not Analyze compatible
+    ${SBBINDIR}/SB/bin/imgmath ${image_in}.img -min ${image_in}.img temphdr.img  -short # header fix
+    ${SBBINDIR}/SB/bin/imgmath tempnu2.img -min tempnu2.img ${image_out}.img -short
+    cp temphdr.hdr ${image_out}.hdr
+    ;; 
+  9x|10x)
+    ${SBBINDIR}/SB/bin/imgmath ${image_in}.img -min ${image_in}.img temphdr.img  -float # header fix
+    ${SBBINDIR}/SB/bin/imgmath tempnu2.img -min tempnu2.img ${image_out}.img -float
+    cp temphdr.hdr ${image_out}.hdr
+    ;; 
+  *)
+   ${SBBINDIR}/SB/bin/imgmath ${image_in}.img -min ${image_in}.img temphdr.img  -short # header fix
+   ${SBBINDIR}/SB/bin/imgmath tempnu2.img -min tempnu2.img ${image_out}.img -short
+   cp temphdr.hdr ${image_out}.hdr
+   ;; 
+esac
+
+# remove temporary files
+rm tempnu2.*
+rm tempnu.* 
+rm ${image_mask}_new.mnc
+rm ${image_mask}.mnc
+rm ${image_in}.mnc 
+rm temphdr.*
+
+echo ""
+echo "Done."
+
+cd ../

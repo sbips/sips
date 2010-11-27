@@ -1,0 +1,124 @@
+#!/bin/sh
+
+
+# USAGE
+
+# Check for SBBINDIR environment variable
+if [ ${SBBINDIR}x = "x" ]
+then
+  echo "Error:  SBBINDIR enviornment variable is not set"
+  exit
+fi
+
+# Configure FSL 
+FSLDIR=${SBBINDIR}/.FSLSB
+export FSLDIR
+FSLOUTPUTTYPE=ANALYZE
+export FSLOUTPUTTYPE
+FSLBINDIR=${FSLDIR}/bin
+
+# PARSE COMMAND LINE OPTIONS
+
+in="empty"
+ref="empty"
+omat="empty"
+refmask="empty"
+inmask="empty"
+opts=""
+
+while [ ${#} -gt 0 ]
+do
+  case ${1} in
+  -in)
+    shift
+    in=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`
+    shift
+    ;;
+  -ref)
+    shift
+    ref=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`
+    shift
+    ;;
+  -inmask)
+    shift
+    inmask=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`
+    shift
+    ;;
+  -refmask)
+    shift
+    refmask=`echo ${1} | sed "s/\.img//" | sed "s/\.hdr//" | sed "s/\.$//"`
+    shift
+    ;;
+  -omat)
+    shift
+    omat=${1}
+    shift
+    ;;
+  *)
+    opts="${opts} ${1}"
+    shift
+    ;;
+  esac
+
+done
+
+# ERROR CHECKING ON INPUT ARGS
+
+# check required input arguments
+if [ ${in} = "empty" ];
+then 
+  echo "Must specify -in"
+  exit
+fi
+
+if [ ${inmask} = "empty" ];
+then 
+  echo "Must specify -inmask"
+  exit
+fi
+
+if [ ${refmask} = "empty" ];
+then 
+  echo "Must specify -refmask"
+  exit
+fi
+
+if [ ${ref} = "empty" ];
+then 
+  echo "Must specify -ref"
+  exit
+fi
+
+if [ ${omat} = "empty" ];
+then 
+  echo "Must specify -omat"
+  exit
+fi
+
+# check that extension was given for omat matrix
+#   (req'd for autonaming the inverse omat matrix)
+ext=`echo ${omat} | grep "\.[a-z0-9A-z].*"`
+ext="empty"${ext}
+if [ ${ext} = "empty" ]
+then
+  echo "Must supply extension for -omat"
+  exit
+fi
+
+filename=`basename ${in}`
+tempdir=".sbcoregisterINtoREF${filename}"
+rm -rf ${tempdir}
+mkdir ${tempdir}
+
+
+#${FSLBINDIR}/avwmaths ${in} -mas ${inmask} ${tempdir}/in_masked
+#${FSLBINDIR}/avwmaths ${ref} -mas ${refmask} ${tempdir}/ref_masked
+${SBBINDIR}/SB/bin/imgmath ${in}.img -mas ${inmask}.img ${tempdir}/in_masked.img
+${SBBINDIR}/SB/bin/imgmath ${ref}.img -mas ${refmask}.img ${tempdir}/ref_masked.img
+
+
+
+sb_coregister_INtoREF -in ${tempdir}/in_masked -ref ${tempdir}/ref_masked -omat ${omat} ${opts}
+
+rm -rf ${tempdir}
+

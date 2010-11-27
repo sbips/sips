@@ -1,0 +1,180 @@
+#!/bin/sh
+##########################################
+# Written 02/23/08 by eg
+##########################################
+
+##########################################
+# Set environment variables
+##########################################
+
+# e.g. SBBINDIR=/opt/sb/egibson/linux or /windows or /unix
+# SBBINDIR must contain /SB and /.FSLSB and /.HFB
+if [ ${SBBINDIR}x = "x" ]; then echo "Error:  SBBINDIR enviornment variable is not set"; exit; fi
+
+# Configure FSL 
+# .FSLSB contains SABRE essential FSL commands
+#  SB contains the wrapper scripts for these FSL commands
+# (this was done so that SABRE would run correctly no matter which version of FSL the user has installed)
+
+FSLDIR=${SBBINDIR}/.FSLSB
+export FSLDIR
+FSLOUTPUTTYPE=ANALYZE
+export FSLOUTPUTTYPE
+FSLBINDIR=${FSLDIR}/bin
+
+##########################################
+# Define functions
+##########################################
+
+usage(){
+  cmdname=`basename ${0}`
+  echo "Usage:"
+  echo "  ${cmdname} -t1acq <T1_image> -hfb <HFB_image> [options]"
+  echo ""
+  echo "  -t1acq <vol>:(uncorrected, skull-on T1 image, required)"
+  echo "  -hfb <vol>:  (edited head-from-brain image, required)"
+  echo "  -t1fc <vol>: (isotropic T1 image, req'd, unless filename ends with _fc)"
+  echo "  -mat <mat>:  (acpc rotation matrix, req'd unless filename ends with .mat)" 
+  echo "  -pfx <pfx>:  (output prefix, req'd unless T1 ends with _T1 or t1)"
+  echo "  -rc <int>:   (right cutoff value for T1 seg, i.e. WM peak, default=0)"
+  echo "  -noic:       (do not perform inhomogeneity correction on T1 prior to seg)"
+  echo ""
+  echo "Purpose:"
+  echo "  -${cmdname} will mask T1 image and segment, and also create"
+  echo "   acpc-aligned images (acpc_T1 and acpc_T1_erode) for SABRE landmarking"
+  echo ""
+  echo "Notes"
+  echo "  -Required input: 16 bit Analyze format T1 & 8/16 bit HfB"
+  echo "  -HfB must have 0s for non-brain and either 1s or 8s for brain"
+  echo ""
+  exit
+}
+
+parse_arguments(){
+  while [ ${#} -gt 0 ]
+  do
+    case ${1} in
+    -t1acq)
+      shift; t1acq=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -t1fc)
+      shift; t1fc=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -hfb)
+      shift; hfb=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -mat)
+      shift; mat=${1}; shift;;
+    -rc)
+      shift; rc="-rc ${1}"; shift;;
+    -pfx)
+      shift; pfx=${1}; shift;;
+   -noic)
+      shift; noic="true";;
+    -help)
+      usage;;
+    *)
+      echo "Error: unknown option ${1}"; exit;;
+    esac
+  done
+}
+
+check_analyze(){
+  if [ ! -f ${1}.img ]; then echo "Error:  ${1}.img not found"; exit; fi
+  if [ ! -f ${1}.hdr ]; then echo "Error:  ${1}.hdr not found"; exit; fi
+  if [ ${2}x != "x" ];  then echo "Error: Multiple files detected: ${*}"; exit; fi
+}
+
+check_file(){
+  if [ ${1}x = "x" ]; then echo "Error: file not found"; exit; fi
+  if [ ! -f ${1} ];   then echo "Error: ${1} not found"; exit; fi
+  if [ ${2}x != "x" ]; then echo "Error: multiple files detected: ${*}"; exit; fi
+}
+
+##########################################
+# Verify Input
+##########################################
+
+if [ ${#} -lt 4 ]; then usage; fi
+
+parse_arguments ${*}
+
+if [ ${t1acq}x  = "x" ]; then echo "Error: must supply a T1 image";  fi
+if [ ${hfb}x = "x" ]; then echo "Error: must supply a HfB image"; fi
+if [ ${t1fc}x = "x" ]; then t1fc=`ls *_fc.img 2>/dev/null | sed "s/\.img//"`; fi
+if [ ${t1fc}x = "x" ]; then echo "Error: can't find isotropic T1, use the -t1fc option"; exit; fi
+if [ ${mat}x  = "x" ]; then mat=`ls *.mat 2>/dev/null`; fi;
+if [ ${pfx}x = "x" ]; then pfx=`echo ${t1acq} | sed "s/_T1//" | sed "s/_t1//"`; fi
+if [ ${pfx} = ${t1acq} ]; then echo "Error: can't guess prefix, use -pfx option"; exit; fi
+if [ ${rc}x = "x" ]; then rc="-rc 0"; fi
+
+check_analyze ${t1acq}; check_analyze ${hfb}; check_analyze ${t1fc};
+
+echo "Checking for acpc rotation matrix"; check_file ${mat}; echo "Found ${mat}";
+echo ${pfx}
+
+##########################################
+# Start processing
+##########################################
+
+
+echo "Transforming Analyze matrix"
+${SBBINDIR}/SB/bin/atransform ${t1fc}.img ${t1acq}.img ${mat} ${pfx}
+
+
+# mask t1
+echo "Running mask_img..."
+# (-m 0 2 3 4 5 6 7 options ensures that command will work with binary
+#  auto_hfb_template output or recoded auto_hfb output where brain = 8)
+${SBBINDIR}/SB/bin/mask_img ${t1acq} ${hfb} -m 0 2 3 4 5 6 7 
+
+# IC with N3 on masked T1 
+if [ ${noic}x = "x" ]; then
+  echo "Running N3 on masked T1"
+  sb_nu_correct_analyze16SI ${t1acq} ${t1acq}_masked ${t1acq}_nu_final -iterations 150 -stop 0.0001 -distance 55
+  ${SBBINDIR}/SB/bin/mask_img ${t1acq}_nu_final ${hfb} -m 0 2 3 4 5 6 7
+  # segment T1
+  echo "Segmenting T1"
+  ${SBBINDIR}/SB/bin/T1seg_3T ${t1acq}_nu_final_masked temp_T1_seg -bfgw 0 5 4 3  -win_size 10 ${rc}
+else
+  echo "Segmenting T1"
+  ${SBBINDIR}/SB/bin/T1seg_3T ${t1acq}_masked temp_T1_seg -bfgw 0 5 4 3  -win_size 10 ${rc}
+fi
+
+echo "Filling holes in segmentation"
+# Fill holes in segmentation 
+# At 3T (SB 2008 preupgrade), many csf voxels have a value of 0 on the original T1
+${SBBINDIR}/SB/bin/fill_csf_seg_holes temp_T1_seg.img ${hfb}.img 5 ${pfx}_T1_seg.img
+rm temp_T1_seg.*
+
+
+#${SBBINDIR}/SB/bin/mask_img ${hfb} ${hfb} -m 0 2 3 4 5 6 7 -o .temp_hfb_masked
+#sb_avwmaths .temp_hfb_masked -bin .temp_hfb_masked_bin
+#sb_avwmaths .temp_hfb_masked_bin -max .temp_T1_seg .temp_hfb_masked_bin_max
+#sb_avwmaths .temp_hfb_masked_bin_max -uthr 2 .temp_hfb_masked_bin_max_thr # isolates "0" csf vox
+#sb_avwmaths .temp_hfb_masked_bin_max_thr -mul 5 .temp_hfb_masked_bin_max_thr_x5
+#sb_avwmaths .temp_hfb_masked_bin_max_thr_x5 -add .temp_T1_seg ${pfx}_T1_seg
+# Quick fix: FSL can alter slightly the voxels dimension and erode checks for precisely equal dimensions
+#cp .temp_T1_seg.hdr ${pfx}_T1_seg.hdr; 
+#rm .temp_hfb*; rm .temp_T1_seg*
+
+
+# reslice corrected T1 in acpc space
+# reslice corrected T1 in acpc space
+echo "Reslicing T1 in acpc space"
+if [ ${noic}x = "x" ]; then
+  ${SBBINDIR}/SB/bin/areslice ${t1acq}_nu_final.img ${t1fc}.img ${pfx}_T1_to_acpc.mat ${pfx}_acpc_T1.img -zpad 30
+else
+  ${SBBINDIR}/SB/bin/areslice ${t1acq}.img ${t1fc}.img ${pfx}_T1_to_acpc.mat ${pfx}_acpc_T1.img -zpad 30
+fi
+
+
+# erode corrected masked T1
+echo "Eroding T1"
+if [ ${noic}x = "x" ]; then
+  ${SBBINDIR}/SB/bin/erode16 ${pfx}_T1_nu_final_masked ${pfx}_T1_seg ${pfx}_T1acq_erode
+else
+  ${SBBINDIR}/SB/bin/erode16 ${pfx}_T1_masked ${pfx}_T1_seg ${pfx}_T1acq_erode
+fi
+
+
+# reslice T1 erode in acpc
+${SBBINDIR}/SB/bin/areslice ${pfx}_T1acq_erode.img ${t1fc}.img  ${pfx}_T1_to_acpc.mat ${pfx}_acpc_T1_erode.img -zpad 30
+

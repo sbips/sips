@@ -1,0 +1,160 @@
+#!/bin/sh
+
+#=========================================================================
+  
+#  Copyright 2002, 2006-2010, Dr. Sandra Black
+#  Linda C. Campbell Cognitive Neurology Unit
+#  Sunnybrook Health Sciences Center
+  
+#  This file is part of the Sunnybrook Image Software Processing (SIPS) package
+
+#  SIPS is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+ 
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+#=========================================================================*/
+
+
+##########################################
+# Written 02/23/08 by eg
+##########################################
+
+##########################################
+# Set environment variables
+##########################################
+
+# e.g. SBBINDIR=/opt/sb/egibson/linux or /windows or /unix
+# SBBINDIR must contain /SB and /.FSLSB and /.HFB
+if [ ${SBBINDIR}x = "x" ]; then echo "Error:  SBBINDIR enviornment variable is not set"; exit; fi
+
+# Configure FSL 
+# .FSLSB contains SABRE essential FSL commands
+#  SB contains the wrapper scripts for these FSL commands
+# (this was done so that SABRE would run correctly no matter which version of FSL the user has installed)
+
+FSLDIR=${SBBINDIR}/.FSLSB
+export FSLDIR
+FSLOUTPUTTYPE=ANALYZE
+export FSLOUTPUTTYPE
+FSLBINDIR=${FSLDIR}/bin
+
+##########################################
+# Define functions
+##########################################
+
+usage(){
+  cmdname=`basename ${0}`
+  echo "Usage:"
+  echo "  ${cmdname} -t1acpc <acpc_T1_erode_image> -seg <T1_seg>"
+  echo ""
+  echo "Examples:"
+  echo "  ${cmdname} -t1acpc acpc_T1_erode -seg T1_seg_vcsf_woc"
+  echo ""
+  echo "Options:"
+  echo "  -t1acpc <vol>:  (ACPC T1 erode, required)"
+  echo "  -seg <vol>: (T1 segmentation, required)"
+  echo "  -mat <mat>: (ACPC-T1 matrix, req'd unless filename ends with _acpc_to_T1.air)"
+  echo "  -pfx <pfx>: (output prefix, req'd unless T1 ends with _acpc_T1_erode)"
+  echo "  -grid <txt>:(landmarking txt file, req'd unless filename ends with _grid.txt)"
+  echo "  -lob <obj>: (tracings obj map, req'd unless filename ends with _lobtrace.obj)"
+  echo "  -t1acq:     (T1 in acquisition space, not usually required)"
+  echo ""
+  echo "Purpose:"
+  echo "  -${cmdname} "
+  echo ""
+  echo "Notes"
+  echo "  -required input: 8 bit Analyze T1 and T1 segmentation, Analyze"
+  echo "   object map & ACPC-to-T1 AIR rotation matrix"
+  echo "  -HfB must have 0s for non-brain and either 1s or 8s for brain"
+  echo ""
+  exit
+}
+
+parse_arguments(){
+  while [ ${#} -gt 0 ]
+  do
+    case ${1} in
+    -t1acpc)
+      shift; t1acpc=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -seg)
+      shift; seg=`echo ${1} | sed "s/\.img$//" | sed "s/\.hdr$//" | sed "s/\.$//"`; shift;;
+    -mat)
+      shift; mat=${1}; shift;;
+    -t1acq)
+      shift; t1acq=${1}; shift;;
+    -pfx)
+      shift; pfx=${1}; shift;;
+    -help)
+      usage;;
+    *)
+      echo "Error: unknown option ${1}"; exit;;
+    esac
+  done
+}
+
+check_analyze(){
+  if [ ! -f ${1}.img ]; then echo "Error:  ${1}.img not found"; exit; fi
+  if [ ! -f ${1}.hdr ]; then echo "Error:  ${1}.hdr not found"; exit; fi
+  if [ ${2}x != "x" ];  then echo "Error: Multiple files detected: ${*}"; exit; fi
+}
+
+check_file(){
+  if [ ${1}x = "x" ]; then echo "Error: file not found"; exit; fi
+  if [ ! -f ${1} ];   then echo "Error: ${1} not found"; exit; fi
+  if [ ${2}x != "x" ]; then echo "Error: multiple files detected: ${*}"; exit; fi
+}
+
+##########################################
+# Verify Input
+##########################################
+
+if [ ${#} -lt 2 ]; then usage; fi
+
+parse_arguments ${*}
+
+if [ ${t1acpc}x = "x" ];   then echo "Error: must supply ACPC T1 erode image"; exit; fi
+if [ ${seg}x = "x" ];   then echo "Error: must supply segmentation image"; exit; fi
+if [ ${mat}x = "x" ];  then mat=`ls *acpc_to_T1.* 2>/dev/null`; fi
+if [ ${grid}x = "x" ]; then grid=`ls *grid.txt 2>/dev/null`; fi
+if [ ${lob}x = "x" ];  then lob=`ls *lobtrace.obj 2>/dev/null`; fi
+if [ ${pfx}x = "x" ];  then pfx=`echo ${t1acpc} | sed "s/_acpc_T1_erode//"`; fi
+if [ ${pfx} = ${t1acpc} ]; then echo "Error: could not guess prefix, use -pfx option"; exit; fi
+echo ${pfx}
+if [ ${t1acq}x = "x" ]; then t1acq=`ls *_T1acq_erode.img | sed "s/\.img//" 2>/dev/null`; fi
+if [ ${t1acq}x = "x" ]; then echo "Error: could not guess T1 acquisition image, use -t1acq option"; exit; fi
+
+check_analyze ${t1acpc}; check_analyze ${seg}
+echo "Checking for ACPC-to_T1 matrix..."; check_file ${mat}; echo "Found ${mat}"
+echo "Checking for lobar tracing...";     check_file ${lob}; echo "Found ${lob}"
+echo "Checking for grid file...";         check_file ${grid}; echo "Found ${grid}"
+
+
+##########################################
+# Start processing
+##########################################
+
+
+echo "Generating lobmask"
+${SBBINDIR}/SB/bin/lobmask ${t1acpc} ${lob} ${pfx}_acpc_lobmask_unfilled -g ${grid} 
+
+echo "Filling possible holes in lobmask"
+${SBBINDIR}/SB/bin/fill_holes_in_acpc_lobmask ${pfx}_acpc_lobmask_unfilled.img ${pfx}_acpc_lobmask_filled.img
+
+echo "Reslicing lobmask"
+${SBBINDIR}/SB/bin/areslice ${pfx}_acpc_lobmask_unfilled.img ${t1acq}.img ${mat} ${pfx}_T1acq_lobmask_unfilled.img -nn 
+${SBBINDIR}/SB/bin/areslice ${pfx}_acpc_lobmask_unfilled.img ${t1acq}.img ${mat} ${pfx}_T1acq_lobmask_filled.img -nn 
+${SBBINDIR}/SB/bin/areslice ${t1acpc}.img ${t1acq}.img ${mat} ${pfx}_T1_rotcheck.img 
+
+echo "Running stats2"
+cmd=`basename ${0}`
+${SBBINDIR}/SB/bin/stats2    ${pfx}_T1acq_lobmask_filled ${seg} > ${pfx}_${cmd}_stats.txt 
+
