@@ -2,9 +2,10 @@
 
 SIPS
 
-The Sunnybrook Image Processing Software (SIPS) package consists primarily of in-house developed 
-programs that can be used to perform various image processing tasks such as tissue segmentation (T1seg), 
-semi-automated brain parcellation (SABRE), white matter hyperintensity and lesion segmentation
+The Sunnybrook Image Processing Software (SIPS) package consists primarily of
+in-house developed programs that can be used to perform various image 
+processing tasks such as tissue segmentation (T1seg), semi-automated brain
+parcellation (SABRE), white matter hyperintensity and lesion segmentation 
 (lesion explorer/flex), and head-from-brain extraction (auto_hfb_template).  
 
 Some external supporting software is also included in the SIPS package, 
@@ -16,13 +17,15 @@ If the SIPS package is used as part of published research, please
 reference the following papers where appropriate.
 
 FLEX:
-Gibson E., Gao F., Black S.E., Lobaugh N.J.  (2010).  Automatic segmentation of white matter 
-hyperintensities in the elderly using FLAIR images at 3T. Journal of Magnetic Resonance Imaging, 31, 1311-22.
+Gibson E., Gao F., Black S.E., Lobaugh N.J.  (2010).  Automatic segmentation of white
+matter hyperintensities in the elderly using FLAIR images at 3T. Journal of Magnetic
+Resonance Imaging, 31, 1311-22.
 
 SABRE
-Dade L.A., Gao F.Q., Kovacevic N., Roy P., Rockel C., O'Toole C.M., Lobaugh N.J.,Feinstein A., Levine B., 
-Black S.E.  (2004).  Semiautomatic brain region extraction: a method of parcellating brain regions from structural
-magnetic resonance images.  Neuroimage, 22, 1492-502.
+Dade L.A., Gao F.Q., Kovacevic N., Roy P., Rockel C., O'Toole C.M., Lobaugh N.J., 
+Feinstein A., Levine B., Black S.E.  (2004).  Semiautomatic brain region extraction: 
+a method of parcellating brain regions from structural magnetic resonance images. 
+Neuroimage, 22, 1492-502.
 
 T1seg / auto_hfb
 Kovacevic N, Lobaugh NJ, Bronskill MJ, Levine B, Feinstein A, Black SE.
@@ -53,8 +56,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 External Supporting Software
 
-Source code and binaries for some FSL version 3.3 programs (avwmaths, bet, flirt)
-have been included and are used in the registration pipeline.  
+Source code and binaries for some FSL version 3.3 programs 
+(avwmaths, bet, flirt) have been included and are used in the 
+registration pipeline.  
 
 Binaries for N3 and supporting programs are also included and are used 
 for inhomogeneity correction.  The source code for these binaries can 
